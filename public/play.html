@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tabletop</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  body { padding-bottom: 120px; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 0 16px; }
+  .join { padding-top: 12vh; display: grid; gap: 14px; }
+  .join input { font-size: 18px; padding: 12px 14px; }
+  #code { text-transform: uppercase; letter-spacing: 10px; text-align: center; font-size: 28px; font-weight: 700; }
+  .swatches { display: flex; gap: 12px; flex-wrap: wrap; }
+  button.big { font-size: 18px; padding: 13px; border-radius: 16px; }
+  .charpick { justify-content: flex-start; gap: 12px; padding: 12px 14px; font-size: 17px; font-weight: 600; border-radius: 16px; text-align: left; }
+  .charpick .face { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+  .swatch { width: 36px; height: 36px; border-radius: 50%; padding: 0; box-shadow: inset 0 0 0 1.5px #0003; }
+  .swatch.on { box-shadow: inset 0 0 0 1.5px #0003, 0 0 0 3px var(--bg), 0 0 0 5px #111; }
+
+  header { position: sticky; top: 0; z-index: 10; background: var(--bg); }
+  header .wrap { padding-top: 14px; padding-bottom: 10px; display: grid; gap: 12px; }
+  .me { display: flex; align-items: center; gap: 12px; }
+  .me .face { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+  .me .name { font-weight: 600; font-size: 17px; }
+  .me .bar { margin-top: 5px; }
+  .me .hp { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .me .hp span { font-size: 13px; color: var(--faint); font-weight: 500; }
+  .scene { color: var(--muted); font-size: 15px; font-family: var(--serif); font-style: italic; padding: 0 2px; }
+  .tab { padding-top: 6px; display: grid; gap: 12px; }
+
+  #map { height: 50vh; border-radius: 14px; }
+  .hpbig { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .attrs { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .attr { display: grid; gap: 4px; }
+  .attr input { width: 100%; font-size: 18px; font-weight: 600; text-align: center; }
+  .attr .val { font-size: 22px; font-weight: 700; text-align: center; padding: 6px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--panel-2); }
+  .line { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 6px; }
+  .line.inv { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; }
+  .x { padding: 4px 10px; color: var(--faint); }
+
+  .actionbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: linear-gradient(transparent, var(--bg) 35%); padding: 24px 16px calc(14px + env(safe-area-inset-bottom));
+  }
+  .actionbar .wrap { padding: 0; display: grid; gap: 8px; }
+  .actionbar .status { background: var(--panel); border: 1.5px solid var(--border-soft); border-radius: 12px; padding: 9px 12px; font-size: 14px; text-align: center; }
+  .actionbar .status:empty { display: none; }
+  #actionBtn { width: 100%; font-size: 19px; padding: 15px; border-radius: 16px; }
+
+  .modal { position: fixed; inset: 0; background: #000c; z-index: 50; display: flex; align-items: flex-end; justify-content: center; }
+  .sheet { background: var(--panel); border-top: 2px solid var(--border); width: 100%; max-width: 560px; border-radius: 22px 22px 0 0; padding: 22px 18px calc(18px + env(safe-area-inset-bottom)); display: grid; gap: 14px; }
+  #modalBody { display: grid; gap: 12px; }
+  .result { text-align: center; padding: 6px 0; }
+  .result .num { font-size: 80px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .result .ruling { font-size: 18px; margin-top: 12px; }
+  .logline { border-bottom: 1px solid var(--line); padding: 10px 2px; font-size: 14px; }
+  .logline:last-child { border-bottom: 0; }
+</style>
+</head>
+<body>
+
+<!-- join screen -->
+<div id="joinScreen" class="wrap join" hidden>
+  <div style="text-align:center;margin-bottom:8px"><h1 id="joinTitle">Join the table</h1>
+    <div id="joinSub" class="muted" style="margin-top:10px;font-family:var(--serif);font-size:17px">Enter the code shown on the TV.</div></div>
+
+  <!-- 1: room code -->
+  <div id="stepCode" class="stack" style="gap:14px">
+    <input id="code" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters">
+    <button id="codeBtn" class="primary big">Continue</button>
+  </div>
+
+  <!-- 2: pick a character from this campaign -->
+  <div id="stepPick" class="stack" style="gap:10px" hidden>
+    <div id="charList" class="stack" style="gap:10px"></div>
+    <button id="newCharBtn" class="soft big">+ New character</button>
+    <button id="changeCode" class="small" style="justify-self:center;color:var(--muted)">Use a different code</button>
+  </div>
+
+  <!-- 3: make a new character -->
+  <div id="stepNew" class="stack" style="gap:14px" hidden>
+    <input id="name" maxlength="30" placeholder="Character name" autocomplete="off">
+    <div id="swatches" class="swatches" style="padding:4px 2px;justify-content:center"></div>
+    <button id="createBtn" class="primary big">Create character</button>
+    <button id="backToPick" class="small" style="justify-self:center;color:var(--muted)">Back</button>
+  </div>
+
+  <div id="joinErr" class="error" style="text-align:center"></div>
+</div>
+
+<!-- game -->
+<div id="game" hidden>
+  <header><div class="wrap">
+    <div class="me">
+      <span id="meFace" class="face"></span>
+      <div class="grow"><div id="meName" class="name"></div><div class="bar"><div id="meBar"></div></div></div>
+      <div id="meHp" class="hp"></div>
+    </div>
+    <div id="scene" class="scene" hidden></div>
+    <div class="seg tabs">
+      <button data-tab="map" class="on">Map</button>
+      <button data-tab="sheet">Sheet</button>
+      <button data-tab="people">People</button>
+      <button data-tab="log">Log</button>
+    </div>
+  </div></header>
+
+  <div class="wrap">
+    <div class="tab" data-pane="map">
+      <div id="map"></div>
+      <div id="party" class="party"></div>
+    </div>
+
+    <div class="tab" data-pane="sheet" hidden>
+      <div class="card">
+        <div class="row"><span class="hpbig" id="sheetHp"></span><span class="faint">HP</span>
+          <span class="grow"></span><span class="faint" style="font-size:12px">Set by the DM</span></div>
+        <div class="bar"><div id="sheetBar"></div></div>
+        <div id="sheetTags" class="row" style="gap:5px"></div>
+      </div>
+      <div class="card">
+        <div class="row"><h2 class="grow">Attributes</h2><span id="attrNote" class="faint" style="font-size:12px"></span></div>
+        <div id="attrs" class="attrs"></div>
+      </div>
+      <div class="card">
+        <h2>Inventory</h2>
+        <div id="inventory" style="display:grid;gap:6px"></div>
+        <button class="add" data-add="item">+ Add item</button>
+      </div>
+      <div class="card">
+        <h2>Backstory</h2>
+        <textarea id="backstory" rows="5" data-field="backstory" placeholder="Who are you?"></textarea>
+      </div>
+      <div class="card">
+        <h2>Notes</h2>
+        <textarea id="notes" rows="5" data-field="notes" placeholder="Anything worth remembering"></textarea>
+      </div>
+      <div class="row"><span id="saveState" class="faint" style="font-size:12px"></span><span class="grow"></span>
+        <button id="leaveBtn" class="small danger">Leave game</button></div>
+    </div>
+
+    <div class="tab" data-pane="people" hidden>
+      <div id="people" style="display:grid;gap:12px"></div>
+    </div>
+
+    <div class="tab" data-pane="log" hidden>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div class="actionbar"><div class="wrap">
+    <div id="pending" class="status"></div>
+    <button id="actionBtn" class="primary">Action</button>
+  </div></div>
+</div>
+
+<!-- action sheet -->
+<div id="modal" class="modal" hidden>
+  <div class="sheet">
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/sight.js"></script>
+<script src="/common.js"></script>
+<script>
+const socket = io();
+const $ = (s) => document.querySelector(s);
+const COLORS = ['#f06a1e', '#f2c21b', '#7a2ea8', '#2fb7e0', '#3fd13f', '#e24b4a', '#d4537e', '#ffffff'];
+let V = null;          // my view from the server
+let sheet = null;      // local copy of my sheet while I edit it
+let sheetSendTimer = null;
+let myColor = COLORS[0];
+let tab = 'map';
+const store = {
+  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+
+// ---------- joining ----------
+
+$('#swatches').innerHTML = COLORS.map((c) => `<button class="swatch" data-color="${c}" style="background:${c}" aria-label="${c}"></button>`).join('');
+function pickColor(c) {
+  myColor = c;
+  document.querySelectorAll('.swatch').forEach((s) => s.classList.toggle('on', s.dataset.color === c));
+}
+pickColor(COLORS[0]);
+$('#swatches').addEventListener('click', (e) => { const s = e.target.closest('.swatch'); if (s) pickColor(s.dataset.color); });
+
+// Joining: room code -> pick one of the campaign's living characters, or make a new one.
+// This phone remembers its character, so it rejoins by itself next time.
+const urlCode = new URLSearchParams(location.search).get('code');
+$('#code').value = (urlCode || store.get('code') || '').toUpperCase();
+let joinCode = '';
+
+function showJoin() { $('#joinScreen').hidden = false; $('#game').hidden = true; }
+
+function showStep(step, error = '') {
+  ['stepCode', 'stepPick', 'stepNew'].forEach((s) => { $(`#${s}`).hidden = s !== step; });
+  if (step === 'stepCode') {
+    $('#joinTitle').textContent = 'Join the table';
+    $('#joinSub').textContent = 'Enter the code shown on the TV.';
+  }
+  $('#joinErr').textContent = error;
+  showJoin();
+}
+
+function forgetCharacter() {
+  try { localStorage.removeItem('playerId'); } catch {}
+  V = null;
+  sheet = null;
+  closeModal();
+}
+
+function lookup(code, error = '') {
+  socket.emit('player:lookup', { code }, (res) => {
+    if (!res.ok) return showStep('stepCode', code ? res.error : '');
+    joinCode = code.toUpperCase();
+    store.set('code', joinCode);
+    $('#joinTitle').textContent = res.campaignName;
+    $('#joinSub').textContent = res.characters.length ? 'Who are you playing?' : 'Make a character to start playing.';
+    $('#charList').innerHTML = res.characters.map((p) => `
+      <button class="soft charpick" data-pick="${p.id}">
+        <span class="face" style="background:${p.color};color:${textOn(p.color)}">${esc(initial(p.name))}</span>
+        <span class="grow">${esc(p.name)}</span>
+        ${p.inUse ? '<span class="faint" style="font-size:12px;font-weight:400">on another phone</span>' : ''}
+      </button>`).join('');
+    showStep('stepPick', error);
+  });
+}
+
+function enter(data) {
+  socket.emit('player:join', { code: joinCode, ...data }, (res) => {
+    if (!res.ok) {
+      if (data.create) $('#joinErr').textContent = res.error;
+      else lookup(joinCode, res.error); // the list may have changed
+      return;
+    }
+    store.set('playerId', res.id);
+    store.set('code', res.code);
+    $('#joinScreen').hidden = true;
+    $('#game').hidden = false;
+  });
+}
+
+$('#codeBtn').addEventListener('click', () => lookup($('#code').value.trim()));
+$('#code').addEventListener('keydown', (e) => { if (e.key === 'Enter') lookup($('#code').value.trim()); });
+$('#charList').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-pick]');
+  if (b) enter({ id: b.dataset.pick });
+});
+$('#newCharBtn').addEventListener('click', () => { showStep('stepNew'); $('#name').focus(); });
+$('#backToPick').addEventListener('click', () => showStep('stepPick'));
+$('#changeCode').addEventListener('click', () => showStep('stepCode'));
+const create = () => enter({ create: { name: $('#name').value.trim(), color: myColor } });
+$('#createBtn').addEventListener('click', create);
+$('#name').addEventListener('keydown', (e) => { if (e.key === 'Enter') create(); });
+
+// Your character stays in the campaign; pick it again from the list to come back.
+$('#leaveBtn').addEventListener('click', () => {
+  if (!confirm('Leave the game? Your character is kept, and you can pick them again from the list.')) return;
+  socket.emit('player:leave', {}, () => {
+    forgetCharacter();
+    lookup(joinCode);
+  });
+});
+
+socket.on('connect', () => {
+  const code = $('#code').value.trim();
+  const id = store.get('playerId');
+  if (code && id) {
+    joinCode = code;
+    socket.emit('player:join', { code, id }, (res) => {
+      if (res.ok) { $('#joinScreen').hidden = true; $('#game').hidden = false; }
+      else { forgetCharacter(); lookup(code); }
+    });
+  } else if (code) lookup(code);
+  else showStep('stepCode');
+});
+
+// Characters were added, moved or died while this phone is on the list: refresh it.
+let refreshTimer = null;
+socket.on('picker:refresh', () => {
+  if ($('#joinScreen').hidden || $('#stepPick').hidden || !joinCode) return;
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => lookup(joinCode), 300);
+});
+
+// The DM switched campaigns (or deleted this character): back to the character list.
+socket.on('player:gone', () => {
+  forgetCharacter();
+  lookup(joinCode || store.get('code') || '');
+});
+
+// ---------- tabs ----------
+
+document.querySelector('.tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]');
+  if (!b) return;
+  tab = b.dataset.tab;
+  document.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== tab; });
+});
+
+// ---------- rendering ----------
+
+const mapView = createMapView($('#map'));
+socket.on('token', (t) => { applyTokenMove(V, t); mapView.moveToken(t.kind, t.id, t.x, t.y); });
+
+socket.on('state', (v) => {
+  const prev = V;
+  V = v;
+  const me = v.me;
+  const hpFrac = Math.max(0, Math.min(1, me.hp / me.maxHp));
+  $('#meFace').style.background = me.color;
+  $('#meFace').style.color = textOn(me.color);
+  $('#meFace').textContent = initial(me.name);
+  $('#meName').textContent = me.name;
+  $('#meBar').style.width = `${hpFrac * 100}%`;
+  $('#meBar').style.background = hpColor(hpFrac);
+  $('#meHp').innerHTML = `${me.hp}<span> / ${me.maxHp}</span>`;
+  $('#scene').hidden = !v.scene;
+  $('#scene').textContent = v.scene;
+
+  // A dead character can still watch but not act; offer to make a new one.
+  if (me.dead && !deadShown) showDead(me);
+  else if (!me.dead && deadShown) { deadShown = false; closeModal(); }
+
+  mapView.render(v);
+  $('#party').innerHTML = v.players.map(memberHtml).join('');
+
+  const f = Math.max(0, Math.min(1, me.hp / me.maxHp));
+  $('#sheetHp').textContent = `${me.hp} / ${me.maxHp}`;
+  $('#sheetBar').style.width = `${f * 100}%`;
+  $('#sheetBar').style.background = hpColor(f);
+  $('#sheetTags').innerHTML = me.statuses.length ? statusTags(me.statuses) : '<span class="muted" style="font-size:13px">No effects</span>';
+
+  // Take the server's sheet unless I'm mid-edit (e.g. the DM just gave me an item).
+  const editing = sheetSendTimer || document.querySelector('[data-pane="sheet"]').contains(document.activeElement);
+  if (!sheet || !editing) { sheet = structuredClone(me.sheet); renderSheet(); }
+  else if (prev && JSON.stringify(prev.me.sheet.inventory) !== JSON.stringify(me.sheet.inventory)) {
+    // Merge items the DM gave while I was typing.
+    const extra = me.sheet.inventory.slice(prev.me.sheet.inventory.length);
+    if (extra.length) { sheet.inventory.push(...extra); renderSheet(); }
+  }
+
+  renderAttributes();
+  renderPeople();
+  renderLog();
+  renderAction();
+});
+
+// The campaign's attributes. Editable only when the DM lets players fill in their own.
+function renderAttributes() {
+  const box = $('#attrs');
+  if (box.contains(document.activeElement) || attrTimer) return; // don't fight the player's typing
+  const mine = V.me.attributes || {};
+  const locked = V.attributeMode === 'dm';
+  $('#attrNote').textContent = V.attributes.length ? (locked ? 'Set by the DM' : 'Fill in your own') : '';
+  box.innerHTML = V.attributes.map((a) => `
+    <label class="attr"><span class="label">${esc(a.name)}</span>
+      ${locked
+        ? `<div class="val">${esc(mine[a.id] || '–')}</div>`
+        : `<input data-attr="${a.id}" value="${esc(mine[a.id] || '')}" maxlength="20" placeholder="–">`}
+    </label>`).join('') || '<div class="faint" style="font-size:13px">Your DM hasn\'t set up attributes yet.</div>';
+}
+
+let attrTimer = null;
+$('#attrs').addEventListener('input', () => {
+  clearTimeout(attrTimer);
+  attrTimer = setTimeout(() => {
+    const values = {};
+    document.querySelectorAll('#attrs [data-attr]').forEach((i) => { values[i.dataset.attr] = i.value; });
+    socket.emit('player:attributes', { values }, () => { attrTimer = null; });
+  }, 500);
+});
+
+function renderSheet() {
+  $('#inventory').innerHTML = sheet.inventory.map((s, i) => `
+    <div class="line inv">
+      <input data-list="inventory" data-i="${i}" data-k="name" value="${esc(s.name)}" placeholder="Item">
+      <input data-list="inventory" data-i="${i}" data-k="note" value="${esc(s.note)}" placeholder="Note">
+      <button class="x" data-del="inventory" data-i="${i}" aria-label="Remove">×</button>
+    </div>`).join('') || '<div class="muted" style="font-size:13px">Nothing yet.</div>';
+  if (document.activeElement !== $('#backstory')) $('#backstory').value = sheet.backstory;
+  if (document.activeElement !== $('#notes')) $('#notes').value = sheet.notes;
+}
+
+function queueSheetSave() {
+  $('#saveState').textContent = 'Saving…';
+  clearTimeout(sheetSendTimer);
+  sheetSendTimer = setTimeout(() => {
+    socket.emit('player:sheet', { sheet }, () => {
+      sheetSendTimer = null;
+      $('#saveState').textContent = 'Saved';
+    });
+  }, 600);
+}
+
+const sheetPane = document.querySelector('[data-pane="sheet"]');
+sheetPane.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.dataset.list) sheet[t.dataset.list][Number(t.dataset.i)][t.dataset.k] = t.value;
+  else if (t.dataset.field) sheet[t.dataset.field] = t.value;
+  else return;
+  queueSheetSave();
+});
+sheetPane.addEventListener('click', (e) => {
+  const add = e.target.closest('[data-add]');
+  const del = e.target.closest('[data-del]');
+  if (add) {
+    sheet.inventory.push({ name: '', note: '' });
+    renderSheet();
+    const inputs = document.querySelectorAll('#inventory input[data-k="name"]');
+    inputs[inputs.length - 1].focus();
+    queueSheetSave();
+  } else if (del) {
+    sheet[del.dataset.del].splice(Number(del.dataset.i), 1);
+    renderSheet();
+    queueSheetSave();
+  }
+});
+
+function renderPeople() {
+  const el = $('#people');
+  if (el.contains(document.activeElement)) return; // don't disturb notes being typed
+  el.innerHTML = V.npcs.length ? V.npcs.map((n) => `
+    <div class="card">
+      <div class="row" style="gap:12px">
+        <span class="face" style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;background:${n.color};color:${textOn(n.color)};box-shadow:inset 0 0 0 3px #2fb7e0">${esc(initial(n.name))}</span>
+        <div class="grow"><h2>${esc(n.name)}</h2>${n.location ? `<div class="faint" style="font-size:13px">Met at ${esc(n.location)}</div>` : ''}</div>
+        ${relTag(n.relationship)}
+      </div>
+      ${n.description ? `<div class="muted" style="white-space:pre-wrap">${esc(n.description)}</div>` : ''}
+      <textarea rows="2" data-npc="${n.id}" placeholder="Your notes (only you see these)">${esc(V.me.npcNotes[n.id] || '')}</textarea>
+    </div>`).join('') : '<div class="faint" style="text-align:center;padding:30px 0">No one yet. People you meet show up here.</div>';
+}
+
+const noteTimers = {};
+$('#people').addEventListener('input', (e) => {
+  const npcId = e.target.dataset.npc;
+  if (!npcId) return;
+  clearTimeout(noteTimers[npcId]);
+  noteTimers[npcId] = setTimeout(() => socket.emit('player:npcNote', { npcId, text: e.target.value }), 600);
+});
+
+function renderLog() {
+  const rows = V.log.slice().reverse().map((e) => `
+    <div class="logline">
+      <div class="row" style="gap:6px"><span class="dot" style="background:${e.color}"></span><b>${esc(e.who)}</b>
+        <span class="faint">d${e.die}</span><b>${e.result ?? '…'}</b>
+        ${e.secret ? '<span class="tag" style="background:#eeedfe;color:#3c3489">Only you</span>' : ''}</div>
+      ${e.action ? `<div class="muted">${esc(e.action)}</div>` : ''}
+      ${e.ruling ? `<div>→ ${esc(e.ruling)}</div>` : ''}
+    </div>`).join('');
+  $('#log').innerHTML = rows ? `<div class="card" style="gap:0;padding:4px 14px">${rows}</div>` : '<div class="faint" style="text-align:center;padding:30px 0">No rolls yet.</div>';
+}
+
+// ---------- the Action button ----------
+
+let watching = null; // id of the roll shown in the action sheet
+const lastSeenRuling = {};
+let rulingsLoaded = false;
+
+function myLatest() {
+  return [...V.log].reverse().find((e) => e.playerId === V.me.id);
+}
+
+let deadShown = false;
+function showDead(me) {
+  deadShown = true;
+  $('#modal').hidden = false;
+  $('#modalBody').innerHTML = `
+    <div style="text-align:center;display:grid;gap:10px;padding:8px 0">
+      <h1>${esc(me.name)} has died</h1>
+      <div class="muted" style="font-family:var(--serif);font-size:17px">Their story ends here, unless the DM says otherwise.</div>
+    </div>
+    <button id="newAfterDeath" class="primary big">Make a new character</button>
+    <button id="stayDead" class="small" style="justify-self:center;color:var(--muted)">Keep watching</button>`;
+  $('#newAfterDeath').onclick = () => socket.emit('player:leave', {}, () => {
+    deadShown = false;
+    forgetCharacter();
+    lookup(joinCode);
+  });
+  $('#stayDead').onclick = () => { $('#modal').hidden = true; };
+}
+
+function renderAction() {
+  const me = V.me;
+  if (me.dead) {
+    $('#actionBtn').textContent = `${me.name} has died`;
+    $('#pending').innerHTML = '';
+    return;
+  }
+  $('#actionBtn').textContent = me.rollMode === 'physical' ? `Action · real d${me.die}` : `Action · roll d${me.die}`;
+  const last = myLatest();
+  $('#pending').innerHTML = last && !last.ruled ? `Waiting for the DM… <span class="muted">(you rolled ${last.result ?? '?'} on d${last.die})</span>` : '';
+
+  // Buzz and pop the sheet open when the DM answers (but not for old rulings on page load).
+  let fresh = null;
+  for (const e of V.log) {
+    if (e.playerId !== me.id || !e.ruledAt || lastSeenRuling[e.id] === e.ruledAt) continue;
+    lastSeenRuling[e.id] = e.ruledAt;
+    if (rulingsLoaded && e.ruling) fresh = e;
+  }
+  rulingsLoaded = true;
+  if (fresh && !document.getElementById('actText')) { // don't interrupt a new action being typed
+    if (navigator.vibrate) navigator.vibrate(120);
+    showResult(fresh);
+  } else if (watching) {
+    const e = V.log.find((x) => x.id === watching);
+    if (e) showResult(e);
+  }
+}
+
+$('#actionBtn').addEventListener('click', () => {
+  const me = V.me;
+  if (me.dead) return showDead(me);
+  const physical = me.rollMode === 'physical';
+  watching = null;
+  $('#modalBody').innerHTML = `
+    <h2>What do you do?</h2>
+    <textarea id="actText" rows="3" placeholder="I try to climb the wall"></textarea>
+    ${physical ? `<div class="muted">Roll your real d${me.die}, then type what you got (or leave it for the DM).</div>
+      <input id="actResult" type="number" inputmode="numeric" placeholder="Your roll" style="font-size:22px;text-align:center">` : ''}
+    <div class="row"><button id="actCancel" class="grow">Cancel</button>
+      <button id="actGo" class="primary grow" style="font-size:18px">${physical ? 'Send' : `Roll d${me.die}`}</button></div>`;
+  $('#modal').hidden = false;
+  $('#actText').focus();
+  $('#actCancel').onclick = closeModal;
+  $('#actGo').onclick = () => {
+    const before = new Set(V.log.map((e) => e.id));
+    const result = physical ? $('#actResult').value : undefined;
+    socket.emit('player:action', { text: $('#actText').value, result }, () => {
+      // The new entry arrives with the state broadcast just before this reply.
+      const mine = V.log.find((e) => e.playerId === V.me.id && !before.has(e.id));
+      watching = mine ? mine.id : null;
+      if (mine) showResult(mine, true);
+    });
+  };
+});
+
+function showResult(e, animate) {
+  watching = e.id;
+  $('#modal').hidden = false;
+  $('#modalBody').innerHTML = `
+    <div class="result">
+      <div class="muted">d${e.die}${e.action ? ` · ${esc(e.action)}` : ''}</div>
+      <div class="num" id="resNum">${e.result ?? '?'}</div>
+      ${e.secret ? '<div class="tag" style="background:#eeedfe;color:#3c3489;margin-top:6px">Only you can see this</div>' : ''}
+      <div class="ruling">${e.ruled ? (e.ruling ? esc(e.ruling) : '<span class="muted">The DM moved on.</span>') : '<span class="muted">Waiting for the DM…</span>'}</div>
+    </div>
+    <button id="resClose" style="width:100%">Close</button>`;
+  $('#resClose').onclick = closeModal;
+  if (animate && e.result != null) {
+    const num = $('#resNum');
+    const start = performance.now();
+    const tick = (now) => {
+      if (now - start < 700) { num.textContent = 1 + Math.floor(Math.random() * e.die); requestAnimationFrame(tick); }
+      else num.textContent = e.result;
+    };
+    requestAnimationFrame(tick);
+  }
+}
+
+function closeModal() {
+  watching = null;
+  $('#modal').hidden = true;
+}
+$('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') closeModal(); });
+</script>
+</body>
+</html>

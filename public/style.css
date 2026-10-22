@@ -1,0 +1,288 @@
+:root {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #f3f1ec;
+  --panel-3: #e7e4dd;
+  --line: #e4e1da;
+  --border: #9a9a9a;
+  --border-soft: #cfccc5;
+  --text: #111111;
+  --muted: #555555;
+  --faint: #8a8a8a;
+  --accent: #23883a;
+  --accent-text: #ffffff;
+  --danger: #c93a32;
+  --hp-full: #3db14c;
+  --hp-hurt: #e24b4a;
+  --enemy: #55575d;
+  --shadow: 1px 2px 0 #00000045;
+  --radius: 12px;
+  --serif: Georgia, "Times New Roman", Times, serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* Plain buttons are text-only; .soft and .primary get the outlined, raised look. */
+button, .btn {
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius);
+  padding: 7px 12px;
+  cursor: pointer;
+  color: var(--text);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background .12s, transform .05s;
+}
+button:hover, .btn:hover { background: var(--panel-2); }
+button.soft, .btn.soft, button.primary {
+  background: #fff;
+  border: 1.5px solid var(--border);
+  box-shadow: var(--shadow);
+}
+button.soft:hover, .btn.soft:hover { background: var(--panel-2); }
+button.primary { border-color: #222; font-weight: 700; }
+button.primary:hover { background: var(--panel-2); }
+button.soft:active, button.primary:active { transform: translate(1px, 1px); box-shadow: none; }
+button.danger { color: var(--danger); }
+button.small, .btn.small { padding: 4px 11px; font-size: 13px; }
+button.icon { padding: 4px 8px; color: var(--faint); font-size: 16px; line-height: 1; }
+button.add { width: 100%; justify-content: flex-start; color: var(--muted); padding: 8px 10px; }
+button.add:hover { color: var(--text); }
+
+input, select, textarea {
+  background: #fff;
+  border: 1.5px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  min-width: 0;
+  outline: none;
+}
+textarea { width: 100%; resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+input:focus, select:focus, textarea:focus { border-color: #111; }
+input[type=checkbox] { accent-color: #111; width: 15px; height: 15px; }
+input[type=range] { accent-color: #111; padding: 0; border: 0; }
+
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.stack { display: grid; gap: 10px; }
+h1, h2 { margin: 0; font-family: var(--serif); font-weight: 700; }
+h1 { font-size: 32px; }
+h2 { font-size: 19px; }
+h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 500; }
+.label { font-size: 12px; color: var(--muted); }
+.error { color: var(--danger); font-size: 13px; min-height: 1em; }
+
+.card { background: var(--panel); border: 1.5px solid var(--border-soft); border-radius: 16px; padding: 14px; display: grid; gap: 10px; }
+
+.tag {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+.bar { height: 7px; background: var(--panel-3); border-radius: 4px; overflow: hidden; }
+.bar > div { height: 100%; border-radius: 4px; transition: width .4s ease; }
+
+/* Segmented tabs (DM sidebar and phones) */
+.seg { display: flex; gap: 2px; background: var(--panel-2); border-radius: 14px; padding: 3px; }
+.seg button { flex: 1; padding: 7px 4px; font-size: 14px; color: var(--muted); border-radius: 11px; border: 1.5px solid transparent; }
+.seg button:hover { background: transparent; color: var(--text); }
+.seg button.on { background: #fff; color: var(--text); font-weight: 600; border-color: var(--border-soft); box-shadow: var(--shadow); }
+
+/* ---------- map ---------- */
+
+.map-view {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #efede8;
+}
+.map-empty { color: var(--faint); font-family: var(--serif); font-size: 18px; }
+.stage { position: absolute; --tok: 32px; box-shadow: 0 2px 12px #0002; user-select: none; -webkit-user-select: none; }
+.stage img { display: block; width: 100%; height: 100%; user-select: none; -webkit-user-drag: none; }
+/* The token layer covers the map but only the tokens themselves catch clicks,
+   so walls and shapes underneath can still be grabbed. */
+.tokens { position: absolute; inset: 0; pointer-events: none; }
+.token { pointer-events: auto; }
+
+/* Walls and shapes the DM draws. Only the DM's map makes them clickable (see dm.html). */
+.drawings { position: absolute; inset: 0; pointer-events: none; }
+.walls { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.walls line { vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.walls .wall-edge { stroke: #ffffffcc; stroke-width: calc(var(--tok) * 0.22 + 3px); }
+.walls .wall { stroke: #2b2622; stroke-width: calc(var(--tok) * 0.22); }
+.walls .wall-hit { stroke: transparent; stroke-width: 18px; }
+/* Windows: pale glass in a dark frame. They close rooms but don't block sight. */
+.walls g.window .wall-edge { stroke: #1f4f73; stroke-width: calc(var(--tok) * 0.16 + 4px); }
+.walls g.window .wall { stroke: #a9dcf7; stroke-width: calc(var(--tok) * 0.16); }
+
+/* Darkness outside rooms, drawn above the map and drawings but below the tokens. */
+.fog { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.token.in-dark { visibility: hidden; }
+.shape {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: 2px solid #00000059;
+  border-radius: 6px;
+  font-size: max(10px, calc(var(--tok) * 0.42));
+  font-weight: 600;
+  line-height: 1.15;
+  padding: 2px 4px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.shape.circle { border-radius: 50%; }
+.shape.text { border: 0; font-family: var(--serif); font-style: italic; font-size: max(11px, calc(var(--tok) * 0.55)); overflow: visible; }
+.shape.selected { outline: 3px dashed #2f6fd4; outline-offset: 2px; }
+
+/* Grid overlay, like graph paper: thin lines measured from the bottom-left corner,
+   with darker axis lines along the left and bottom edges. One square per token space. */
+.grid { position: absolute; inset: 0; pointer-events: none; background-position: left bottom; }
+.grid.dark {
+  background-image: linear-gradient(to right, #0000002e 1px, transparent 1px),
+                    linear-gradient(to top, #0000002e 1px, transparent 1px);
+  box-shadow: inset 2px -2px 0 #00000073;
+}
+.grid.light {
+  background-image: linear-gradient(to right, #ffffff4d 1px, transparent 1px),
+                    linear-gradient(to top, #ffffff4d 1px, transparent 1px);
+  box-shadow: inset 2px -2px 0 #ffffffa6;
+}
+.axes { position: absolute; inset: 0; pointer-events: none; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.axes span { position: absolute; line-height: 1; }
+.axes .x { bottom: 3px; transform: translateX(-50%); }
+.axes .y { left: 4px; transform: translateY(-50%); }
+.axes .axis-unit { left: 4px; bottom: 3px; font-weight: 700; }
+.axes.dark span { color: #000000a6; }
+.axes.light span { color: #ffffffd9; }
+
+.token {
+  position: absolute;
+  width: var(--tok);
+  height: var(--tok);
+  transform: translate(-50%, -50%);
+  touch-action: none;
+  user-select: none;
+  transition: left .15s linear, top .15s linear;
+}
+.token.dragging { transition: none; z-index: 10; }
+.map-view.draggable .token { cursor: grab; }
+.map-view.draggable .token.dragging { cursor: grabbing; }
+
+.token .tok-face {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-weight: 700;
+  font-size: calc(var(--tok) * 0.42);
+}
+.token.player, .token.player .tok-face { border-radius: 50%; }
+.token.player .tok-face { box-shadow: 0 0 0 2px #fff, 0 2px 6px #0006; }
+.token .tok-name {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: max(10px, calc(var(--tok) * 0.3));
+  font-weight: 600;
+  color: #111;
+  background: #ffffffe6;
+  padding: 0 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Enemies and NPCs are round like players; only the ring says what they are. */
+.token.enemy .tok-face {
+  border: max(2px, calc(var(--tok) * 0.09)) solid var(--hp-hurt);
+  border-radius: 50%;
+  font-size: calc(var(--tok) * 0.34);
+  box-shadow: 0 2px 6px #0006;
+}
+.token.enemy .tok-bar {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: -6%;
+  width: 112%;
+  height: max(4px, calc(var(--tok) * 0.14));
+  background: #000a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.token.enemy .tok-bar > div { height: 100%; background: var(--hp-hurt); transition: width .4s ease; }
+.token.enemy .tok-tags {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 2px;
+}
+.token.enemy .tok-tags .tag { font-size: max(9px, calc(var(--tok) * 0.26)); padding: 0 4px; }
+.token.hidden-enemy { opacity: .4; }
+.token.hidden-enemy .tok-face { border-style: dashed; }
+
+.token.npc .tok-face {
+  border: max(2px, calc(var(--tok) * 0.09)) solid #2fb7e0;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px #0006;
+}
+
+/* ---------- party bar (TV and phones) ---------- */
+
+.party {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px 22px;
+}
+.member { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.member .face {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+}
+.member .info { flex: 1; min-width: 0; }
+.member .top { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 600; }
+.member .top .hp { color: var(--muted); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.member .bar { margin: 5px 0 7px; }
+.member .tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.member .none { font-size: 11px; color: var(--faint); }

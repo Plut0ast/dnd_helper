@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabletop TV</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  html, body { height: 100%; overflow: hidden; }
+  .tv { display: grid; grid-template-rows: minmax(0, 1fr) auto; height: 100vh; }
+  #map { height: 100%; }
+  .partybar { padding: 16px 28px 20px; background: var(--bg); border-top: 1.5px solid var(--line); }
+  .partybar .party { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .partybar:empty { display: none; }
+
+  .scene {
+    position: absolute; top: 20px; left: 20px; max-width: 46%;
+    background: #ffffffeb; border: 1.5px solid var(--border-soft); box-shadow: var(--shadow); border-radius: 14px;
+    padding: 12px 18px; font-size: 20px; font-family: var(--serif); font-style: italic; z-index: 20;
+  }
+  .join {
+    position: absolute; top: 20px; right: 20px; z-index: 20;
+    background: #ffffffeb; border: 1.5px solid var(--border-soft); box-shadow: var(--shadow); border-radius: 14px;
+    padding: 10px; display: flex; gap: 12px; align-items: center;
+  }
+  .join img { width: 92px; height: 92px; border-radius: 8px; background: #fff; display: block; }
+  .join .code { font-size: 28px; font-weight: 800; letter-spacing: 5px; color: var(--accent); line-height: 1.1; }
+  .join .url { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  .roll {
+    position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%) scale(.92);
+    z-index: 30; min-width: 400px; max-width: 70vw;
+    background: #fff; border: 2px solid var(--border); box-shadow: 3px 5px 0 #00000040, 0 20px 60px #0003; border-radius: 22px;
+    padding: 26px 36px; text-align: center; opacity: 0; pointer-events: none;
+    transition: opacity .25s, transform .25s;
+  }
+  .roll.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .roll .who { font-size: 22px; font-weight: 600; }
+  .roll .action { font-size: 19px; color: var(--muted); margin-top: 4px; font-family: var(--serif); font-style: italic; }
+  .roll .die { color: var(--muted); margin-top: 10px; font-size: 15px; }
+  .roll .num { font-size: 96px; font-weight: 800; line-height: 1.05; }
+  .roll .crit { font-size: 22px; font-weight: 700; letter-spacing: 2px; min-height: 1em; }
+  .roll.nat20 { border-color: #b8860b; }
+  .roll.nat20 .num, .roll.nat20 .crit { color: #b8860b; }
+  .roll.nat1 { border-color: var(--danger); }
+  .roll.nat1 .num, .roll.nat1 .crit { color: var(--danger); }
+  .roll .ruling { margin-top: 14px; font-size: 22px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .roll .ruling:empty { display: none; }
+  .roll .waiting { font-size: 22px; color: var(--muted); padding: 18px 0; }
+</style>
+</head>
+<body>
+<div class="tv">
+  <div style="position:relative; min-height:0">
+    <div id="map"></div>
+    <div id="scene" class="scene" hidden></div>
+    <div id="join" class="join" hidden></div>
+    <div id="roll" class="roll"></div>
+  </div>
+  <div id="party" class="partybar"></div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/sight.js"></script>
+<script src="/common.js"></script>
+<script>
+const socket = io();
+const mapView = createMapView(document.getElementById('map'));
+let view = null;
+
+socket.on('connect', () => socket.emit('tv:hello'));
+socket.on('token', (t) => { applyTokenMove(view, t); mapView.moveToken(t.kind, t.id, t.x, t.y); });
+// "TV follows my view": zoom and pan with the DM (null = whole map).
+socket.on('camera', (c) => mapView.setCamera(c));
+socket.on('state', (v) => {
+  view = v;
+  mapView.render(v);
+  mapView.setCamera(v.tvCamera);
+
+  const scene = document.getElementById('scene');
+  scene.hidden = !v.scene;
+  scene.textContent = v.scene;
+
+  const join = document.getElementById('join');
+  join.hidden = !v.showJoin;
+  join.innerHTML = `<img src="${v.qr}" alt="QR code to join">
+    <div><div class="faint" style="font-size:12px">Join with code</div><div class="code">${esc(v.roomCode)}</div><div class="url">${esc(v.joinUrl)}</div></div>`;
+
+  document.getElementById('party').innerHTML = v.players.length ? `<div class="party">${v.players.map(memberHtml).join('')}</div>` : '';
+
+  handleRolls(v.log);
+});
+
+// ---- roll popups ----
+// Each new roll pops up in the middle of the TV; the DM's ruling appears under it when it arrives.
+const seen = new Map(); // id -> { result, ruledAt }
+let first = true;
+let shownId = null;
+let hideTimer = null;
+const rollEl = document.getElementById('roll');
+
+function handleRolls(log) {
+  let trigger = null;
+  for (const e of log) {
+    const before = seen.get(e.id);
+    seen.set(e.id, { result: e.result, ruledAt: e.ruledAt });
+    if (first) continue;
+    const isNew = !before;
+    const gotResult = before && before.result == null && e.result != null;
+    const gotRuling = before && e.ruledAt && e.ruledAt !== before.ruledAt && e.ruling;
+    if (isNew || gotResult || gotRuling) trigger = { e, animate: isNew || gotResult };
+  }
+  first = false;
+  if (trigger) showRoll(trigger.e, trigger.animate);
+  else if (shownId) {
+    const cur = log.find((x) => x.id === shownId);
+    if (!cur) hide(); // log cleared or roll made secret
+  }
+}
+
+function showRoll(e, animate) {
+  shownId = e.id;
+  const nat20 = e.die === 20 && e.result === 20;
+  const nat1 = e.die === 20 && e.result === 1;
+  rollEl.className = 'roll show' + (nat20 ? ' nat20' : '') + (nat1 ? ' nat1' : '');
+  const body = e.result == null
+    ? `<div class="waiting">Rolling real dice…</div>`
+    : `<div class="num">${animate ? '' : e.result}</div><div class="crit"></div>`;
+  rollEl.innerHTML = `
+    <div class="who" style="color:${e.color}">${esc(e.who)}</div>
+    ${e.action ? `<div class="action">${esc(e.action)}</div>` : ''}
+    <div class="die">d${e.die}${e.mode === 'physical' ? ' · real dice' : ''}</div>
+    ${body}
+    <div class="ruling">${esc(e.ruling || '')}</div>`;
+  if (e.result != null && animate) spin(e);
+  else if (e.result != null) setCrit(e, nat20, nat1);
+  clearTimeout(hideTimer);
+  // Leave unruled rolls up until the DM answers; ruled ones fade after a while.
+  if (e.result != null && (e.ruled || e.kind === 'dm')) hideTimer = setTimeout(hide, e.ruling ? 9000 : 6000);
+}
+
+function setCrit(e, nat20, nat1) {
+  const c = rollEl.querySelector('.crit');
+  if (c) c.textContent = nat20 ? 'CRITICAL!' : nat1 ? 'CRITICAL FAIL' : '';
+}
+
+function spin(e) {
+  const num = rollEl.querySelector('.num');
+  const start = performance.now();
+  const dur = 900;
+  const tick = (now) => {
+    if (shownId !== e.id) return;
+    if (now - start < dur) {
+      num.textContent = 1 + Math.floor(Math.random() * e.die);
+      requestAnimationFrame(tick);
+    } else {
+      num.textContent = e.result;
+      setCrit(e, e.die === 20 && e.result === 20, e.die === 20 && e.result === 1);
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+function hide() {
+  shownId = null;
+  rollEl.className = 'roll';
+}
+</script>
+</body>
+</html>

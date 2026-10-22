@@ -1,0 +1,1542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tabletop DM</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  html, body { height: 100%; }
+  .login { max-width: 300px; margin: 18vh auto; padding: 0 16px; display: grid; gap: 12px; text-align: center; }
+  .login input { width: 100%; font-size: 26px; text-align: center; letter-spacing: 8px; padding: 12px; }
+  .login button { width: 100%; padding: 11px; }
+
+  .dm { display: grid; grid-template-columns: minmax(0, 1fr) 400px; height: 100vh; }
+  .mapwrap { position: relative; min-height: 0; height: 100%; }
+  #map { height: 100%; }
+  .tools { position: absolute; top: 12px; left: 12px; z-index: 20; display: flex; flex-wrap: wrap; gap: 2px; background: #fff;
+    border: 1.5px solid var(--border-soft); border-radius: 14px; padding: 3px; box-shadow: var(--shadow); }
+  .tools button { font-size: 13px; padding: 6px 10px; border-radius: 10px; }
+  .tools button.on { background: #111; color: #fff; }
+  .tools button.off { color: var(--faint); }
+  .tools button[data-draw] { color: var(--muted); }
+  .tools button[data-draw].off { color: #c4c2bd; cursor: default; background: transparent; }
+  .tools .sep { width: 1.5px; background: var(--line); margin: 4px 3px; }
+  .shapepanel { position: absolute; top: 12px; right: 12px; z-index: 20; width: 250px; background: #fff; border: 1.5px solid var(--border-soft);
+    border-radius: 14px; padding: 10px; display: grid; gap: 8px; box-shadow: var(--shadow); }
+  /* What the map responds to depends on the tool. */
+  #map.tool-move .shape { pointer-events: auto; cursor: move; }
+  #map.tool-move .wall-hit { pointer-events: stroke; cursor: move; }
+  #map.tool-move g:hover .wall { stroke: #2f6fd4; }
+  #map.tool-move .stage { cursor: grab; }
+  #map.panning .stage { cursor: grabbing; }
+  .zoombar { position: absolute; right: 12px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: 2px; background: #fff;
+    border: 1.5px solid var(--border-soft); border-radius: 14px; padding: 3px; box-shadow: var(--shadow); font-size: 13px; }
+  .zoombar button { padding: 5px 10px; border-radius: 10px; font-size: 13px; }
+  .zoombar .pct { min-width: 44px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .zoombar label { display: flex; align-items: center; gap: 5px; padding: 0 8px; border-left: 1.5px solid var(--line); margin-left: 3px; }
+  #map.tool-draw .stage { cursor: crosshair; }
+  #map.tool-draw .token, #map.tool-erase .token { pointer-events: none; }
+  #map.tool-erase .shape { pointer-events: auto; cursor: pointer; }
+  #map.tool-erase .shape:hover { outline: 3px solid var(--danger); }
+  #map.tool-erase .wall-hit { pointer-events: stroke; cursor: pointer; }
+  #map.tool-erase g:hover .wall { stroke: var(--danger); }
+  .preview-shape { position: absolute; border: 2px dashed #2f6fd4; background: #2f6fd422; pointer-events: none; }
+  .preview-shape.circle { border-radius: 50%; }
+  .walls.preview line { stroke: #2f6fd4; stroke-width: 4px; stroke-dasharray: 6 4; }
+  .side { overflow-y: auto; background: var(--bg); border-left: 1.5px solid var(--line); }
+  .head { padding: 14px 16px 12px; position: sticky; top: 0; background: var(--bg); z-index: 5; display: grid; gap: 12px; }
+  .head .title { font-family: var(--serif); font-weight: 700; font-size: 19px; }
+  .head .sub { font-size: 12px; color: var(--faint); }
+  .head .code { color: var(--accent); font-weight: 700; letter-spacing: 2px; }
+  .count { background: var(--danger); color: #fff; border-radius: 9px; padding: 0 6px; font-size: 11px; font-weight: 600; margin-left: 4px; }
+  .count:empty { display: none; }
+  .pane { padding: 4px 16px 24px; display: grid; gap: 12px; align-content: start; }
+  .sec { display: grid; gap: 8px; }
+  .sechead { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .sechead .grow { flex: 1; }
+  .empty { color: var(--faint); font-size: 14px; padding: 4px 2px; }
+
+  .unit { background: var(--panel); border: 1.5px solid var(--border-soft); border-radius: 16px; padding: 12px; display: grid; gap: 10px; }
+  .unit.dim { opacity: .65; }
+  .unit-top { display: flex; align-items: center; gap: 12px; }
+  .unit-name { font-weight: 600; display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .avatar { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; font-size: 14px; }
+  .avatar.enemy { box-shadow: inset 0 0 0 3px var(--hp-hurt); font-size: 12px; }
+  .avatar.npc { box-shadow: inset 0 0 0 3px #2fb7e0; }
+  .hp { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hp span { font-size: 13px; color: var(--faint); font-weight: 500; }
+  .presence { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .presence.on { background: var(--accent); }
+
+  .chips { gap: 5px; }
+  .chip { display: inline-flex; align-items: center; font-size: 12px; font-weight: 500; padding: 2px 2px 2px 8px; border-radius: 6px; }
+  .chip button { padding: 0 5px; font-size: 13px; line-height: 1.2; color: inherit; opacity: .7; }
+  .chip button:hover { background: transparent; opacity: 1; }
+  .chip-input { width: 90px; padding: 3px 8px; font-size: 12px; background: transparent; border: 1.5px dashed var(--border-soft); }
+
+  .stepper { display: inline-flex; align-items: center; background: var(--panel-2); border-radius: 10px; }
+  .stepper input { width: 46px; text-align: center; background: transparent; padding: 5px 0; border: 0; }
+  .stepper input:focus { background: transparent; }
+  .stepper button { padding: 5px 11px; font-size: 17px; line-height: 1; font-weight: 600; }
+  .stepper .minus { color: var(--danger); }
+  .stepper .plus { color: var(--accent); }
+
+  .more { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .more .full { grid-column: 1 / -1; }
+  .field { display: grid; gap: 4px; }
+  .field input, .field select { width: 100%; }
+  input.num { width: 70px; }
+  input[type=color] { width: 100%; height: 34px; padding: 3px; }
+
+  .rollcard { background: #fffbea; border: 1.5px solid #222; box-shadow: var(--shadow); border-radius: 16px; padding: 12px; display: grid; gap: 10px; }
+  .rollnum { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .quote { color: var(--muted); }
+
+  .mapthumb { display: block; width: 64px; height: 42px; object-fit: cover; border-radius: 8px; flex-shrink: 0; }
+  .logline { font-size: 13px; padding: 8px 2px; border-bottom: 1px solid var(--line); }
+  .logline:last-child { border-bottom: 0; }
+
+  .campaigns { max-width: 620px; margin: 0 auto; padding: 8vh 16px 40px; display: grid; gap: 16px; }
+  .campaigns .ctitle { font-family: var(--serif); font-weight: 700; font-size: 20px; }
+  .campaigns .unit.active { border-color: #222; box-shadow: var(--shadow); }
+  .charrow { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .charrow:last-child { border-bottom: 0; }
+  .charrow .avatar { width: 28px; height: 28px; font-size: 12px; }
+
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #fff; color: var(--danger); border: 1.5px solid currentColor; box-shadow: var(--shadow); padding: 9px 16px; border-radius: 12px; z-index: 100; font-size: 14px; font-weight: 600; }
+  .toast.ok { color: var(--accent); }
+
+  @media (max-width: 900px) {
+    .dm { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+    .side { overflow: visible; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="login" class="login">
+  <h1>Dungeon Master</h1>
+  <p class="muted" style="margin:0">Enter the PIN shown in the window where you started Tabletop.</p>
+  <form id="loginForm" class="stack">
+    <input id="pin" inputmode="numeric" autocomplete="off" placeholder="····" autofocus>
+    <button class="primary">Enter</button>
+    <div id="loginErr" class="error"></div>
+  </form>
+</div>
+
+<!-- campaign picker: shown after the PIN, and from the Campaigns button -->
+<div id="campaigns" class="campaigns" hidden>
+  <div class="row">
+    <h1 class="grow">Campaigns</h1>
+    <button id="campBack" class="small soft" data-camp="back" hidden>Back to the game</button>
+  </div>
+  <p class="muted" style="margin:0;font-family:var(--serif);font-size:17px">Pick a campaign to play. Everything saves as you go.</p>
+  <div class="unit">
+    <div class="row"><input id="newCampName" class="grow" placeholder="Name a new campaign, e.g. The Sunken Crown">
+      <button class="small primary" data-camp="new">Create</button></div>
+  </div>
+  <div id="campList" class="stack"></div>
+</div>
+
+<div id="app" class="dm" hidden>
+  <div class="mapwrap">
+    <div id="map"></div>
+    <!-- drawing toolbar: walls and shapes on the current map -->
+    <div id="tools" class="tools">
+      <button data-tool="move" title="Move tokens and shapes; click a shape to edit it">Move</button>
+      <button data-tool="wall" title="Drag to draw a wall along the grid. Four or more joined walls make a room.">Wall</button>
+      <button data-tool="window" title="Drag to draw a window: it closes a room like a wall, but players can see through it">Window</button>
+      <button data-tool="rect" title="Drag to draw a box">Box</button>
+      <button data-tool="circle" title="Drag to draw a circle">Circle</button>
+      <button data-tool="text" title="Click to place a text label">Text</button>
+      <button data-tool="erase" title="Click a wall or shape to remove it">Erase</button>
+      <span class="sep"></span>
+      <button data-draw="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
+      <button data-draw="redo" title="Redo (Ctrl+Y)">↷ Redo</button>
+      <button data-draw="reset" title="Remove every wall and shape on this map">× Reset</button>
+      <span class="sep"></span>
+      <button id="dayNight" title="Day: players see as far as walls allow. Night: only within their light.">Day</button>
+    </div>
+    <div class="zoombar">
+      <button data-zoom="out" title="Zoom out">−</button>
+      <span id="zoomPct" class="pct">100%</span>
+      <button data-zoom="in" title="Zoom in (or use the mouse wheel)">+</button>
+      <button data-zoom="fit" title="Fit the whole map to the screen (100%)">Fit</button>
+      <label title="The TV zooms and pans with your map"><input type="checkbox" id="tvFollow"> TV follows</label>
+    </div>
+    <div id="shapePanel" class="shapepanel" hidden>
+      <textarea id="shText" rows="2" maxlength="300" placeholder="Text inside (optional)"></textarea>
+      <div class="row">
+        <input id="shColor" type="color" title="Colour" style="width:44px;height:34px;padding:3px">
+        <label class="row faint" style="gap:4px;font-size:12px">W <input id="shW" type="number" min="1" style="width:56px"></label>
+        <label class="row faint" style="gap:4px;font-size:12px">H <input id="shH" type="number" min="1" style="width:56px"></label>
+      </div>
+      <div class="row"><span id="shHint" class="faint grow" style="font-size:11px">Size in grid squares</span>
+        <button class="small danger" id="shDelete">Delete</button></div>
+    </div>
+  </div>
+  <div class="side">
+    <div class="head">
+      <div class="row">
+        <div class="grow">
+          <div class="title" id="campName"></div>
+          <div class="sub">Room <span id="roomCode" class="code"></span> · <span id="joinUrl"></span></div>
+        </div>
+        <button class="small" data-camp="show">Campaigns</button>
+        <a href="/tv" target="_blank" class="btn small soft">Open TV ↗</a>
+      </div>
+      <div class="seg" id="tabs">
+        <button data-tab="play" class="on">Play<span id="pendingCount" class="count"></span></button>
+        <button data-tab="npcs">NPCs</button>
+        <button data-tab="maps">Maps</button>
+        <button data-tab="game">Game</button>
+      </div>
+    </div>
+
+    <div class="pane" data-pane="play">
+      <div class="sec" data-sec="rolls"></div>
+      <div class="sec" data-sec="party"></div>
+      <div class="sec" data-sec="enemies"></div>
+    </div>
+    <div class="pane" data-pane="npcs" hidden>
+      <div class="sec" data-sec="npcs"></div>
+    </div>
+    <div class="pane" data-pane="maps" hidden>
+      <div class="sec" data-sec="maps"></div>
+      <div class="sec" data-sec="scene"></div>
+    </div>
+    <div class="pane" data-pane="game" hidden>
+      <div class="sec" data-sec="saves"></div>
+      <div class="sec" data-sec="attrs"></div>
+      <div class="sec" data-sec="log"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/sight.js"></script>
+<script src="/common.js"></script>
+<script>
+const socket = io();
+let S = null; // full DM state from the server
+const $ = (sel, root = document) => root.querySelector(sel);
+
+// ---------- connection and login ----------
+
+function send(event, data) {
+  return new Promise((resolve) => {
+    socket.emit(event, data, (res) => {
+      if (res && !res.ok) toast(res.error || 'Something went wrong');
+      resolve(res || {});
+    });
+  });
+}
+
+function toast(msg, ok) {
+  const t = document.createElement('div');
+  t.className = ok ? 'toast ok' : 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+
+// A fresh login opens the campaign picker; a reconnect drops you back where you were.
+async function login(pin, pickCampaign) {
+  const res = await new Promise((r) => socket.emit('dm:auth', { pin }, r));
+  if (!res.ok) { $('#loginErr').textContent = res.error; return false; }
+  sessionStorage.setItem('dmPin', pin);
+  $('#login').hidden = true;
+  if (pickCampaign) showCampaigns(false);
+  else if ($('#campaigns').hidden) $('#app').hidden = false;
+  return true;
+}
+
+$('#loginForm').addEventListener('submit', (e) => { e.preventDefault(); login($('#pin').value.trim(), true); });
+socket.on('connect', () => {
+  const pin = sessionStorage.getItem('dmPin');
+  if (pin) login(pin, false);
+});
+
+// ---------- campaign picker ----------
+
+let camps = { activeId: null, campaigns: [] };
+const campOpen = new Set();
+
+async function showCampaigns(canGoBack) {
+  $('#app').hidden = true;
+  $('#campaigns').hidden = false;
+  $('#campBack').hidden = !canGoBack;
+  const res = await send('dm:listCampaigns');
+  if (res.ok) { camps = res; renderCampaigns(); }
+}
+
+function hideCampaigns() {
+  $('#campaigns').hidden = true;
+  $('#app').hidden = false;
+}
+
+function renderCampaigns() {
+  const others = (c) => camps.campaigns.filter((x) => x.id !== c.id);
+  $('#campList').innerHTML = camps.campaigns.map((c) => {
+    const active = c.id === camps.activeId;
+    const alive = c.characters.filter((p) => !p.dead).length;
+    const pid = `c-${c.id}`;
+    return `<div class="unit ${active ? 'active' : ''}">
+      <div class="unit-top">
+        <div class="grow">
+          <div class="ctitle">${esc(c.name)}</div>
+          <div class="faint" style="font-size:13px">${alive} character${alive === 1 ? '' : 's'} · ${c.maps} map${c.maps === 1 ? '' : 's'}${c.savedAt ? ` · last played ${new Date(c.savedAt).toLocaleDateString()}` : ''}</div>
+        </div>
+        ${active ? '<span class="faint" style="font-size:12px">Playing now</span>' : ''}
+        <button class="small primary" data-camp="open" data-id="${c.id}">${active ? 'Continue' : 'Play'}</button>
+        <button class="icon" data-camp="toggle" data-id="${c.id}" aria-label="Characters and options">⋯</button>
+      </div>
+      <div class="more" id="${pid}" ${campOpen.has(pid) ? '' : 'hidden'}>
+        <div class="full">
+          <span class="label">Characters (each has its own save folder)</span>
+          ${c.characters.map((p) => `
+            <div class="charrow">
+              <span class="avatar" style="${fillStyle(p.color)}">${esc(initial(p.name))}</span>
+              <span class="grow">${esc(p.name)}${p.dead ? ' <span class="tag" style="background:#f1efe8;color:#444441">Dead</span>' : ''}</span>
+              ${others(c).length ? `<select data-camp-move data-id="${p.id}" data-from="${c.id}">
+                <option value="">Move to…</option>
+                ${others(c).map((o) => `<option value="${o.id}">${esc(o.name)}</option>`).join('')}
+              </select>` : ''}
+            </div>`).join('') || '<div class="faint" style="font-size:13px;padding:6px 0">No characters yet. Players make them when they join.</div>'}
+        </div>
+        <div class="full row"><span class="grow"></span>
+          ${active ? '<span class="faint" style="font-size:12px">Open another campaign to delete this one</span>'
+            : `<button class="small danger" data-camp="delete" data-id="${c.id}">Delete campaign</button>`}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-camp]');
+  if (!b) return;
+  const { id } = b.dataset;
+  switch (b.dataset.camp) {
+    case 'show': showCampaigns(true); break;
+    case 'back': hideCampaigns(); break;
+    case 'toggle': {
+      const pid = `c-${id}`;
+      if (campOpen.has(pid)) campOpen.delete(pid); else campOpen.add(pid);
+      document.getElementById(pid).hidden = !campOpen.has(pid);
+      break;
+    }
+    case 'open': {
+      const res = await send('dm:openCampaign', { id });
+      if (res.ok) hideCampaigns();
+      break;
+    }
+    case 'new': {
+      const name = val('newCampName');
+      if (!name) return toast('Give the campaign a name');
+      const res = await send('dm:newCampaign', { name });
+      if (res.ok) {
+        $('#newCampName').value = '';
+        hideCampaigns();
+        // First stop for a new campaign: decide the character attributes.
+        document.querySelector('#tabs [data-tab="game"]').click();
+        toast(`${name} is ready. Set up character attributes, then players can join.`, true);
+      }
+      break;
+    }
+    case 'delete': {
+      const c = camps.campaigns.find((x) => x.id === id);
+      if (!confirm(`Delete "${c.name}" and all its characters for good? This can't be undone.`)) return;
+      const res = await send('dm:deleteCampaign', { id });
+      if (res.ok) { camps = res; renderCampaigns(); }
+      break;
+    }
+  }
+});
+
+document.addEventListener('change', async (ev) => {
+  const sel = ev.target.closest('[data-camp-move]');
+  if (!sel || !sel.value) return;
+  const to = camps.campaigns.find((x) => x.id === sel.value);
+  const res = await send('dm:moveCharacter', { id: sel.dataset.id, from: sel.dataset.from, to: sel.value });
+  if (res.ok) {
+    camps = res;
+    campOpen.add(`c-${to.id}`);
+    renderCampaigns();
+    toast(`Moved to ${to.name}`, true);
+  } else sel.value = '';
+});
+
+$('#tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]');
+  if (!b) return;
+  document.querySelectorAll('#tabs [data-tab]').forEach((x) => x.classList.toggle('on', x === b));
+  document.querySelectorAll('[data-pane]').forEach((p) => { p.hidden = p.dataset.pane !== b.dataset.tab; });
+  $('.side').scrollTop = 0;
+});
+
+// ---------- map ----------
+
+const mapView = createMapView($('#map'), {
+  draggable: true,
+  seeAll: true,      // the DM sees tokens in the dark,
+  fogOpacity: 0.5,   // and the darkness as a shade, to know what players can't see
+  onMove(kind, id, x, y) {
+    socket.emit('dm:move', { kind, id, x, y });
+    applyMoveToState({ kind, id, x, y });
+  },
+});
+$('#map').classList.add('draggable');
+
+function applyMoveToState(t) {
+  if (!S) return;
+  if (t.kind === 'player') {
+    const p = S.players.find((x) => x.id === t.id);
+    if (p) p.positions[S.currentMapId] = { x: t.x, y: t.y };
+  } else if (t.kind === 'npc') {
+    const n = S.npcs.find((x) => x.id === t.id);
+    if (n && n.positions) n.positions[S.currentMapId] = { x: t.x, y: t.y };
+  } else {
+    const e = S.enemies.find((x) => x.id === t.id);
+    if (e) { e.x = t.x; e.y = t.y; }
+  }
+}
+
+function mapShape() {
+  return {
+    map: S.map,
+    players: S.players.map((p) => ({ ...p, pos: p.positions[S.currentMapId] || null })),
+    enemies: S.enemies.filter((e) => e.mapId === S.currentMapId),
+    npcTokens: S.npcs
+      .filter((n) => n.positions && n.positions[S.currentMapId])
+      .map((n) => ({ id: n.id, ...n.positions[S.currentMapId], known: true, name: n.name, color: n.color })),
+  };
+}
+
+socket.on('token', (t) => {
+  applyMoveToState(t);
+  mapView.moveToken(t.kind, t.id, t.x, t.y);
+});
+
+// ---------- drawing walls and shapes ----------
+// Move: drag tokens, drag/click shapes to edit. Wall/Box/Circle: drag on the map
+// (corners snap to the grid). Text: click to place a label. Erase: click to remove.
+
+let tool = 'move';
+let selected = null; // id of the shape being edited
+const stageEl = mapView.stage;
+const currentShapes = () => (S && S.map && S.map.shapes) || [];
+
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('#tools [data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === t));
+  const m = $('#map');
+  m.classList.remove('tool-move', 'tool-draw', 'tool-erase');
+  m.classList.add(t === 'move' ? 'tool-move' : t === 'erase' ? 'tool-erase' : 'tool-draw');
+  if (t !== 'move') selectShape(null);
+}
+$('#tools').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tool]');
+  if (b) setTool(b.dataset.tool);
+  const d = e.target.closest('[data-draw]');
+  if (d) drawingHistory(d.dataset.draw);
+});
+setTool('move');
+
+// Undo / Redo / Reset for walls and shapes. The history is kept per map on the server.
+function drawingHistory(what) {
+  const h = (S && S.drawHistory) || { undo: 0, redo: 0 };
+  if (what === 'undo' && !h.undo) return;
+  if (what === 'redo' && !h.redo) return;
+  if (what === 'reset') {
+    const m = S && S.map;
+    if (!m || !((m.walls || []).length || (m.shapes || []).length)) return;
+    if (!confirm('Remove every wall and shape on this map? You can undo this.')) return;
+  }
+  send('dm:drawing', { [what]: true });
+}
+
+function refreshHistoryButtons() {
+  const h = (S && S.drawHistory) || { undo: 0, redo: 0 };
+  const m = S && S.map;
+  const empty = !m || !((m.walls || []).length || (m.shapes || []).length);
+  document.querySelector('[data-draw="undo"]').classList.toggle('off', !h.undo);
+  document.querySelector('[data-draw="redo"]').classList.toggle('off', !h.redo);
+  document.querySelector('[data-draw="reset"]').classList.toggle('off', empty);
+  const night = m && m.lighting && m.lighting.time === 'night';
+  $('#dayNight').textContent = night ? 'Night' : 'Day';
+  $('#dayNight').classList.toggle('on', !!night);
+}
+
+$('#dayNight').addEventListener('click', () => {
+  if (!S || !S.map) return;
+  const night = S.map.lighting && S.map.lighting.time === 'night';
+  send('dm:map', { id: S.map.id, lighting: { time: night ? 'day' : 'night' } });
+});
+
+function selectShape(id) {
+  selected = id;
+  mapView.selectShape(id);
+  refreshShapePanel(true);
+}
+
+// Show the selected shape's text, colour and size (in grid squares).
+function refreshShapePanel(force) {
+  const s = currentShapes().find((x) => x.id === selected);
+  $('#shapePanel').hidden = !s;
+  if (!s) { selected = null; return; }
+  const cell = mapView.cellFrac();
+  const panel = $('#shapePanel');
+  if (!force && panel.contains(document.activeElement)) return;
+  if (!textTimer) $('#shText').value = s.text; // don't wipe text that hasn't saved yet
+  $('#shColor').value = s.color;
+  $('#shW').value = cell ? Math.max(1, Math.round(s.w / cell.x)) : '';
+  $('#shH').value = cell ? Math.max(1, Math.round(s.h / cell.y)) : '';
+  $('#shW').disabled = $('#shH').disabled = !cell;
+  $('#shHint').textContent = cell ? 'Size in grid squares' : 'Set the map size to resize by squares';
+}
+
+const updateShape = (patch) => selected && send('dm:shape', { update: { id: selected, ...patch } });
+let textTimer = null;
+$('#shText').addEventListener('input', () => {
+  const id = selected;
+  const text = $('#shText').value;
+  clearTimeout(textTimer);
+  textTimer = setTimeout(() => {
+    textTimer = null;
+    send('dm:shape', { update: { id, text } });
+  }, 400);
+});
+$('#shColor').addEventListener('change', () => updateShape({ color: $('#shColor').value }));
+$('#shW').addEventListener('change', () => { const c = mapView.cellFrac(); if (c) updateShape({ w: Number($('#shW').value) * c.x }); });
+$('#shH').addEventListener('change', () => { const c = mapView.cellFrac(); if (c) updateShape({ h: Number($('#shH').value) * c.y }); });
+$('#shDelete').addEventListener('click', () => {
+  if (selected) send('dm:shape', { remove: selected });
+  selectShape(null);
+});
+document.addEventListener('keydown', (e) => {
+  if (e.target.matches('input, textarea, select')) return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    drawingHistory(e.shiftKey ? 'redo' : 'undo');
+    return;
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+    e.preventDefault();
+    drawingHistory('redo');
+    return;
+  }
+  if (e.key === 'Escape') setTool('move');
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
+    send('dm:shape', { remove: selected });
+    selectShape(null);
+  }
+});
+
+const pointAt = (e) => { const p = mapView.toFrac(e.clientX, e.clientY); return mapView.snapCorner(p.x, p.y); };
+
+stageEl.addEventListener('pointerdown', (e) => {
+  if (!S || !S.map || e.button !== 0) return;
+  if (tool === 'erase') {
+    const wall = e.target.closest('[data-wall]');
+    const shape = e.target.closest('[data-shape]');
+    if (wall) send('dm:wall', { remove: wall.dataset.wall });
+    if (shape) send('dm:shape', { remove: shape.dataset.shape });
+    return;
+  }
+  if (tool === 'move') {
+    const shape = e.target.closest('[data-shape]');
+    const wall = e.target.closest('[data-wall]');
+    if (shape) dragShape(e, shape);
+    else if (wall) dragWall(e, wall);
+    else if (!e.target.closest('.token')) startPan(e);
+    return;
+  }
+  drawStart(e);
+});
+
+// Drag a wall to slide it, or grab near one end to move just that end. Ends snap to the grid.
+function dragWall(e, g) {
+  e.preventDefault();
+  const w = (S.map.walls || []).find((x) => x.id === g.dataset.wall);
+  if (!w) return;
+  selectShape(null);
+  mapView.lockDrawings(true);
+  stageEl.setPointerCapture(e.pointerId);
+  const W = stageEl.clientWidth, H = stageEl.clientHeight;
+  const start = mapView.toFrac(e.clientX, e.clientY);
+  const near = (x, y) => Math.hypot((x - start.x) * W, (y - start.y) * H) < 14;
+  const mode = near(w.x1, w.y1) ? 'start' : near(w.x2, w.y2) ? 'end' : 'whole';
+  const clamp01 = (v) => Math.min(1, Math.max(0, v));
+  let next = { ...w };
+  const lines = g.querySelectorAll('line');
+  const move = (ev) => {
+    const p = mapView.toFrac(ev.clientX, ev.clientY);
+    if (mode === 'start') {
+      const s = mapView.snapCorner(p.x, p.y);
+      next = { ...w, x1: s.x, y1: s.y };
+    } else if (mode === 'end') {
+      const s = mapView.snapCorner(p.x, p.y);
+      next = { ...w, x2: s.x, y2: s.y };
+    } else {
+      // Snap the first end and move the other by the same amount, so the wall keeps its shape.
+      const s = mapView.snapCorner(clamp01(w.x1 + p.x - start.x), clamp01(w.y1 + p.y - start.y));
+      const dx = s.x - w.x1, dy = s.y - w.y1;
+      next = { ...w, x1: s.x, y1: s.y, x2: clamp01(w.x2 + dx), y2: clamp01(w.y2 + dy) };
+    }
+    lines.forEach((l) => {
+      l.setAttribute('x1', next.x1 * 1000); l.setAttribute('y1', next.y1 * 1000);
+      l.setAttribute('x2', next.x2 * 1000); l.setAttribute('y2', next.y2 * 1000);
+    });
+  };
+  const up = () => {
+    stageEl.removeEventListener('pointermove', move);
+    stageEl.removeEventListener('pointerup', up);
+    stageEl.removeEventListener('pointercancel', up);
+    const changed = ['x1', 'y1', 'x2', 'y2'].some((k) => next[k] !== w[k]);
+    const zeroLength = next.x1 === next.x2 && next.y1 === next.y2;
+    if (changed && !zeroLength) {
+      Object.assign(w, next); // show it straight away; the server confirms
+      send('dm:wall', { update: next });
+    }
+    mapView.lockDrawings(false);
+  };
+  stageEl.addEventListener('pointermove', move);
+  stageEl.addEventListener('pointerup', up);
+  stageEl.addEventListener('pointercancel', up);
+}
+
+// ---------- zoom and pan ----------
+
+let followTv = false;
+let cameraTimer = null;
+let lastMapId = null;
+
+// Send the view to the TV when it follows (throttled while scrolling or dragging).
+function cameraChanged() {
+  $('#zoomPct').textContent = `${Math.round(mapView.camera().zoom * 100)}%`;
+  if (!followTv || cameraTimer) return;
+  cameraTimer = setTimeout(() => {
+    cameraTimer = null;
+    socket.emit('dm:camera', mapView.camera());
+  }, 60);
+}
+
+// Drag empty map to pan; a click without dragging just clears the selection.
+function startPan(e) {
+  const from = { x: e.clientX, y: e.clientY };
+  let last = from;
+  let moved = false;
+  stageEl.setPointerCapture(e.pointerId);
+  const move = (ev) => {
+    if (!moved && Math.abs(ev.clientX - from.x) + Math.abs(ev.clientY - from.y) < 4) return;
+    moved = true;
+    $('#map').classList.add('panning');
+    mapView.panBy(ev.clientX - last.x, ev.clientY - last.y);
+    last = { x: ev.clientX, y: ev.clientY };
+    cameraChanged();
+  };
+  const up = () => {
+    stageEl.removeEventListener('pointermove', move);
+    stageEl.removeEventListener('pointerup', up);
+    stageEl.removeEventListener('pointercancel', up);
+    $('#map').classList.remove('panning');
+    if (!moved) selectShape(null);
+  };
+  stageEl.addEventListener('pointermove', move);
+  stageEl.addEventListener('pointerup', up);
+  stageEl.addEventListener('pointercancel', up);
+}
+
+$('#map').addEventListener('wheel', (e) => {
+  if (!S || !S.map) return;
+  e.preventDefault();
+  mapView.zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.15 : 1 / 1.15);
+  cameraChanged();
+}, { passive: false });
+
+document.querySelector('.zoombar').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-zoom]');
+  if (!b || !S || !S.map) return;
+  const r = $('#map').getBoundingClientRect();
+  const mid = [r.left + r.width / 2, r.top + r.height / 2];
+  if (b.dataset.zoom === 'in') mapView.zoomAt(...mid, 1.4);
+  if (b.dataset.zoom === 'out') mapView.zoomAt(...mid, 1 / 1.4);
+  if (b.dataset.zoom === 'fit') mapView.setCamera(null);
+  cameraChanged();
+});
+
+$('#tvFollow').addEventListener('change', (e) => {
+  followTv = e.target.checked;
+  socket.emit('dm:camera', followTv ? mapView.camera() : null);
+});
+
+// A different map starts at "whole map"; tell a following TV.
+function onMapChanged() {
+  if (!S || S.currentMapId === lastMapId) return;
+  lastMapId = S.currentMapId;
+  cameraChanged();
+  if (followTv) socket.emit('dm:camera', mapView.camera());
+}
+
+// Drag out a wall or a shape, with a dashed preview while dragging.
+function drawStart(e) {
+  e.preventDefault();
+  stageEl.setPointerCapture(e.pointerId);
+  const a = pointAt(e);
+  let b = a;
+  let preview;
+  const isLine = tool === 'wall' || tool === 'window';
+  if (isLine) {
+    preview = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    preview.setAttribute('class', 'walls preview');
+    preview.setAttribute('viewBox', '0 0 1000 1000');
+    preview.setAttribute('preserveAspectRatio', 'none');
+    preview.innerHTML = '<line/>';
+  } else {
+    preview = document.createElement('div');
+    preview.className = `preview-shape ${tool === 'circle' ? 'circle' : ''}`;
+  }
+  stageEl.appendChild(preview);
+  const draw = () => {
+    if (isLine) {
+      const l = preview.querySelector('line');
+      [['x1', a.x], ['y1', a.y], ['x2', b.x], ['y2', b.y]].forEach(([k, v]) => l.setAttribute(k, v * 1000));
+    } else {
+      Object.assign(preview.style, {
+        left: `${Math.min(a.x, b.x) * 100}%`, top: `${Math.min(a.y, b.y) * 100}%`,
+        width: `${Math.abs(b.x - a.x) * 100}%`, height: `${Math.abs(b.y - a.y) * 100}%`,
+      });
+    }
+  };
+  draw();
+  const move = (ev) => { b = pointAt(ev); draw(); };
+  const up = async () => {
+    stageEl.removeEventListener('pointermove', move);
+    stageEl.removeEventListener('pointerup', up);
+    stageEl.removeEventListener('pointercancel', up);
+    preview.remove();
+    if (isLine) {
+      if (a.x !== b.x || a.y !== b.y) send('dm:wall', { add: { x1: a.x, y1: a.y, x2: b.x, y2: b.y, type: tool } });
+      return;
+    }
+    // A click (no drag) makes a default size: 4×1 squares for text, 2×2 for shapes.
+    const cell = mapView.cellFrac() || { x: 0.05, y: 0.05 };
+    let box = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+    if (box.w < cell.x / 2 || box.h < cell.y / 2) {
+      box = tool === 'text' ? { x: a.x, y: a.y, w: cell.x * 4, h: cell.y } : { x: a.x, y: a.y, w: cell.x * 2, h: cell.y * 2 };
+      // Keep it on the map when clicking near an edge.
+      box.w = Math.min(box.w, 1);
+      box.h = Math.min(box.h, 1);
+      box.x = Math.min(box.x, 1 - box.w);
+      box.y = Math.min(box.y, 1 - box.h);
+    }
+    const res = await send('dm:shape', {
+      add: { type: tool, ...box, color: tool === 'text' ? '#111111' : '#c9b98f', text: tool === 'text' ? 'Label' : '' },
+    });
+    if (res.ok) {
+      setTool('move');
+      selectShape(res.shapeId);
+      $('#shText').focus();
+      $('#shText').select();
+    }
+  };
+  stageEl.addEventListener('pointermove', move);
+  stageEl.addEventListener('pointerup', up);
+  stageEl.addEventListener('pointercancel', up);
+}
+
+// Drag a shape to move it (its corner snaps to the grid); a click just selects it.
+function dragShape(e, el) {
+  e.preventDefault();
+  const id = el.dataset.shape;
+  const s = currentShapes().find((x) => x.id === id);
+  if (!s) return;
+  selectShape(id);
+  mapView.lockDrawings(true);
+  stageEl.setPointerCapture(e.pointerId);
+  const start = mapView.toFrac(e.clientX, e.clientY);
+  let pos = { x: s.x, y: s.y };
+  let moved = false;
+  const move = (ev) => {
+    const p = mapView.toFrac(ev.clientX, ev.clientY);
+    const raw = { x: s.x + p.x - start.x, y: s.y + p.y - start.y };
+    pos = mapView.snapCorner(Math.max(0, Math.min(1 - s.w, raw.x)), Math.max(0, Math.min(1 - s.h, raw.y)));
+    moved = moved || Math.abs(p.x - start.x) + Math.abs(p.y - start.y) > 0.005;
+    el.style.left = `${pos.x * 100}%`;
+    el.style.top = `${pos.y * 100}%`;
+  };
+  const up = () => {
+    stageEl.removeEventListener('pointermove', move);
+    stageEl.removeEventListener('pointerup', up);
+    stageEl.removeEventListener('pointercancel', up);
+    if (moved) {
+      Object.assign(s, pos); // show it straight away; the server confirms
+      updateShape({ x: pos.x, y: pos.y });
+    }
+    mapView.lockDrawings(false);
+  };
+  stageEl.addEventListener('pointermove', move);
+  stageEl.addEventListener('pointerup', up);
+  stageEl.addEventListener('pointercancel', up);
+}
+
+// ---------- rendering ----------
+// Each sidebar section re-renders only when its data changes, and waits while
+// you're typing in it so your cursor isn't lost.
+
+const sigs = {};
+const dirty = new Set();
+const open = new Set(); // ids of "⋯" panels and forms that are expanded
+
+socket.on('state', (v) => {
+  S = v;
+  mapView.render(mapShape());
+  refreshShapePanel();
+  refreshHistoryButtons();
+  onMapChanged();
+  $('#campName').textContent = S.campaignName;
+  $('#roomCode').textContent = S.roomCode;
+  $('#joinUrl').textContent = S.joinUrl;
+  const pending = S.log.filter((l) => l.kind === 'action' && !l.ruled).length;
+  $('#pendingCount').textContent = pending || '';
+  for (const name of Object.keys(sections)) renderSection(name);
+});
+
+function renderSection(name, force) {
+  const el = document.querySelector(`[data-sec="${name}"]`);
+  const { sig, html } = sections[name];
+  const s = JSON.stringify(sig());
+  if (!force && sigs[name] === s) return;
+  if (!force && el.contains(document.activeElement) && document.activeElement.matches('input, textarea, select')) {
+    dirty.add(name);
+    return;
+  }
+  sigs[name] = s;
+  dirty.delete(name);
+  // Keep half-typed drafts (rulings, amounts, forms) across the refresh, but only
+  // fields you actually changed, so fresh values from the server still show.
+  const keep = {};
+  el.querySelectorAll('input[id]:not([type=file]):not([data-change]), textarea[id], select[id]:not([data-change])').forEach((i) => {
+    if (i.type === 'checkbox') { if (i.checked !== i.defaultChecked) keep[i.id] = i.checked; }
+    else if (i.tagName === 'SELECT' || i.value !== i.defaultValue) keep[i.id] = i.value;
+  });
+  el.innerHTML = html();
+  for (const [k, v] of Object.entries(keep)) {
+    const n = document.getElementById(k);
+    if (!n || !el.contains(n)) continue;
+    if (n.type === 'checkbox') n.checked = v; else n.value = v;
+  }
+}
+
+document.addEventListener('focusout', (ev) => {
+  // Clicking a button: leave it alone so the click lands; the action's own update re-renders.
+  if (ev.relatedTarget && ev.relatedTarget.closest('[data-act]')) return;
+  setTimeout(() => {
+    const a = document.activeElement;
+    for (const name of [...dirty]) {
+      const el = document.querySelector(`[data-sec="${name}"]`);
+      if (el.contains(a) && a.matches('input, textarea, select')) continue;
+      renderSection(name, true);
+    }
+  }, 200);
+});
+
+// ---------- small templates ----------
+
+const dieOptions = (cur, custom = true) => {
+  const list = DICE.includes(cur) ? DICE : [...DICE, cur];
+  return list.map((d) => `<option value="${d}" ${d === cur ? 'selected' : ''}>d${d}</option>`).join('') + (custom ? '<option value="custom">Custom…</option>' : '');
+};
+
+const modeOptions = (cur) => `
+  <option value="digital" ${cur === 'digital' ? 'selected' : ''}>App rolls</option>
+  <option value="physical" ${cur === 'physical' ? 'selected' : ''}>Real dice</option>`;
+
+const unitName = (unit) => (unit === 'm' ? 'm' : 'ft');
+const unitOptions = (cur) => `
+  <option value="ft" ${cur !== 'm' ? 'selected' : ''}>Feet</option>
+  <option value="m" ${cur === 'm' ? 'selected' : ''}>Metres</option>`;
+
+const fillStyle = (c) => `background:${c};color:${textOn(c)}`;
+
+const hiddenUnless = (pid) => (open.has(pid) ? '' : 'hidden');
+const moreBtn = (pid) => `<button class="icon" data-act="toggle" data-panel="${pid}" aria-label="More options">⋯</button>`;
+const head = (title, extra = '') => `<div class="sechead"><span>${title}</span><span class="grow"></span>${extra}</div>`;
+
+function statusChips(kind, id, statuses) {
+  return statuses.map((s, i) => `<span class="chip" style="${tagStyle(s)}">${esc(s)}<button data-act="unstatus" data-kind="${kind}" data-id="${id}" data-i="${i}" aria-label="Remove">×</button></span>`).join('');
+}
+
+function hpStepper(kind, id) {
+  return `<div class="stepper">
+    <button class="minus" data-act="dmg" data-kind="${kind}" data-id="${id}" title="Damage">−</button>
+    <input type="number" id="amt-${kind}-${id}" placeholder="0" min="0" aria-label="Amount">
+    <button class="plus" data-act="heal" data-kind="${kind}" data-id="${id}" title="Heal">+</button>
+  </div>`;
+}
+
+// "Strength 14 · Dexterity 12", with blanks flagged so the DM sees what's left to fill in.
+function attrSummary(p) {
+  if (!S.attributes.length) return '';
+  const vals = p.attributes || {};
+  return `<div style="font-size:13px;color:var(--muted)">${S.attributes.map((a) => (vals[a.id]
+    ? `${esc(a.name)} <b style="color:var(--text)">${esc(vals[a.id])}</b>`
+    : `${esc(a.name)} <span class="faint">–</span>`)).join(' · ')}</div>`;
+}
+
+const CLASSIC_ATTRIBUTES = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma'];
+
+function playerCard(p) {
+  const f = Math.max(0, Math.min(1, p.hp / p.maxHp));
+  const online = S.online.includes(p.id);
+  const pid = `p-${p.id}`;
+  return `<div class="unit ${p.dead ? 'dim' : ''}">
+    <div class="unit-top">
+      <span class="avatar" style="background:${p.color};color:${textOn(p.color)}">${esc(initial(p.name))}</span>
+      <div class="grow">
+        <div class="unit-name">${esc(p.name)}<span class="presence ${online ? 'on' : ''}" title="${online ? 'Connected' : 'Not connected'}"></span>
+          ${p.dead ? '<span class="tag" style="background:#f1efe8;color:#444441">Dead</span>' : ''}</div>
+        <div class="bar"><div style="width:${f * 100}%;background:${hpColor(f)}"></div></div>
+      </div>
+      <div class="hp">${p.hp}<span> / ${p.maxHp}</span></div>
+    </div>
+    ${attrSummary(p)}
+    <div class="row chips">${statusChips('player', p.id, p.statuses)}
+      <input class="chip-input" id="st-player-${p.id}" placeholder="+ status" data-enter="addstatus" data-kind="player" data-id="${p.id}">
+    </div>
+    <div class="row">
+      ${hpStepper('player', p.id)}
+      <span class="faint" style="font-size:13px">d${p.die}${p.rollMode === 'physical' ? ' · real dice' : ''}</span>
+      <span class="grow"></span>${moreBtn(pid)}
+    </div>
+    <div class="more" id="${pid}" ${hiddenUnless(pid)}>
+      ${S.attributes.map((a) => `<label class="field"><span class="label">${esc(a.name)}</span>
+        <input value="${esc((p.attributes || {})[a.id] || '')}" maxlength="20" data-change="pattr" data-id="${p.id}" data-attr="${a.id}"></label>`).join('')}
+      <label class="field"><span class="label">Max HP</span><input type="number" value="${p.maxHp}" data-change="maxhp" data-kind="player" data-id="${p.id}"></label>
+      <label class="field"><span class="label">Colour</span><input type="color" value="${p.color}" data-change="pcolor" data-id="${p.id}"></label>
+      <label class="field"><span class="label">Die</span><select data-change="die" data-id="${p.id}">${dieOptions(p.die)}</select></label>
+      <label class="field"><span class="label">Dice</span><select data-change="mode" data-id="${p.id}">${modeOptions(p.rollMode)}</select></label>
+      <div class="row full"><input id="item-${p.id}" class="grow" placeholder="Give an item" data-enter="give" data-id="${p.id}">
+        <button class="small soft" data-act="give" data-id="${p.id}">Give</button></div>
+      <div class="row full">
+        <button class="small soft" data-act="dead" data-id="${p.id}">${p.dead ? 'Bring back to life' : 'Mark as dead'}</button>
+        <span class="grow"></span><button class="small danger" data-act="removeplayer" data-id="${p.id}">Delete character</button></div>
+    </div>
+  </div>`;
+}
+
+function enemyCard(e) {
+  const f = Math.max(0, Math.min(1, e.hp / e.maxHp));
+  const pid = `e-${e.id}`;
+  return `<div class="unit ${e.hidden ? 'dim' : ''}">
+    <div class="unit-top">
+      <span class="avatar enemy" style="${fillStyle(e.color || ENEMY_COLOR)}">${esc(e.label)}</span>
+      <div class="grow">
+        <div class="unit-name">${esc(e.name)}${e.hidden ? '<span class="tag" style="background:var(--panel-3);color:var(--muted)">Hidden</span>' : ''}</div>
+        <div class="bar"><div style="width:${f * 100}%;background:var(--danger)"></div></div>
+      </div>
+      <div class="hp">${e.hp}<span> / ${e.maxHp}</span></div>
+    </div>
+    <div class="row chips">${statusChips('enemy', e.id, e.statuses)}
+      <input class="chip-input" id="st-enemy-${e.id}" placeholder="+ status" data-enter="addstatus" data-kind="enemy" data-id="${e.id}">
+    </div>
+    <div class="row">
+      ${hpStepper('enemy', e.id)}
+      <span class="grow"></span>
+      <button class="small" data-act="togglehide" data-id="${e.id}">${e.hidden ? 'Reveal' : 'Hide'}</button>
+      ${moreBtn(pid)}
+    </div>
+    <div class="more" id="${pid}" ${hiddenUnless(pid)}>
+      <label class="field"><span class="label">Max HP</span><input type="number" value="${e.maxHp}" data-change="maxhp" data-kind="enemy" data-id="${e.id}"></label>
+      <label class="field"><span class="label">Colour</span><input type="color" value="${e.color || ENEMY_COLOR}" data-change="ecolor" data-id="${e.id}"></label>
+      <div class="full row"><span class="grow"></span><button class="small danger" data-act="removeenemy" data-id="${e.id}">Remove enemy</button></div>
+    </div>
+  </div>`;
+}
+
+// One dropdown per player who has met this NPC: how the NPC feels about them.
+function relationshipRows(n) {
+  const met = S.players.filter((p) => n.revealAll || n.revealedTo.includes(p.id));
+  if (!met.length) return '';
+  return `<div class="full stack" style="gap:6px"><span class="label">Feels about…</span>
+    ${met.map((p) => {
+      const level = (n.relationships && n.relationships[p.id]) || 'Neutral';
+      return `<div class="row"><span class="grow">${esc(p.name)}</span>
+        <select data-change="npcrel" data-id="${n.id}" data-pid="${p.id}" style="${RELATIONSHIPS[level]}">
+          ${Object.keys(RELATIONSHIPS).map((r) => `<option ${r === level ? 'selected' : ''}>${r}</option>`).join('')}
+        </select></div>`;
+    }).join('')}</div>`;
+}
+
+function metSummary(n) {
+  if (n.revealAll) return 'Met by everyone';
+  const names = S.players.filter((p) => n.revealedTo.includes(p.id)).map((p) => p.name);
+  return names.length ? `Met by ${names.join(', ')}` : 'Not met yet';
+}
+
+function npcCard(n) {
+  const onMap = n.positions && n.positions[S.currentMapId];
+  const pid = `n-${n.id}`;
+  return `<div class="unit">
+    <div class="unit-top">
+      <span class="avatar npc" style="${fillStyle(n.color || NPC_COLOR)}">${esc(initial(n.name))}</span>
+      <div class="grow">
+        <div class="unit-name" style="margin:0">${esc(n.name)}</div>
+        <div class="faint" style="font-size:13px">${esc(metSummary(n))}${n.location ? ` · ${esc(n.location)}` : ''}</div>
+      </div>
+      ${moreBtn(pid)}
+    </div>
+    ${n.description ? `<div class="quote" style="font-size:14px;white-space:pre-wrap">${esc(n.description)}</div>` : ''}
+    <div class="row">
+      <button class="small soft" data-act="npcmap" data-on="${onMap ? '' : '1'}" data-id="${n.id}">${onMap ? 'Take off map' : 'Put on map'}</button>
+    </div>
+    <div class="more" id="${pid}" ${hiddenUnless(pid)}>
+      <div class="full row" style="font-size:14px">
+        <span class="label" style="width:100%">Who has met them</span>
+        <label class="row" style="gap:6px"><input type="checkbox" data-change="npcall" data-id="${n.id}" ${n.revealAll ? 'checked' : ''}> Everyone</label>
+        ${n.revealAll ? '' : S.players.map((p) => `<label class="row" style="gap:6px"><input type="checkbox" data-change="npcwho" data-id="${n.id}" data-pid="${p.id}" ${n.revealedTo.includes(p.id) ? 'checked' : ''}> ${esc(p.name)}</label>`).join('')}
+      </div>
+      ${relationshipRows(n)}
+      <label class="field"><span class="label">Colour</span><input type="color" value="${n.color || NPC_COLOR}" data-change="ncolor" data-id="${n.id}"></label>
+      <div class="full row">
+        <button class="small soft" data-act="npcedit" data-id="${n.id}">Edit</button>
+        <button class="small danger" data-act="npcenemy" data-id="${n.id}">Turn into enemy</button>
+        <span class="grow"></span>
+        <button class="small danger" data-act="npcdelete" data-id="${n.id}">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ---------- sections ----------
+
+const sections = {
+  rolls: {
+    sig: () => [S.log.filter((l) => l.kind === 'action' && !l.ruled), [...open].filter((k) => k === 'dmroll')],
+    html: () => {
+      const pending = S.log.filter((l) => l.kind === 'action' && !l.ruled).reverse();
+      const cards = pending.map((e) => `
+        <div class="rollcard">
+          <div class="row">
+            <span class="avatar" style="width:28px;height:28px;font-size:12px;background:${e.color};color:${textOn(e.color)}">${esc(initial(e.who))}</span>
+            <div class="grow"><b>${esc(e.who)}</b> <span class="faint" style="font-size:13px">d${e.die}${e.mode === 'physical' ? ' · real dice' : ''} · ${timeAgo(e.time)}</span></div>
+            ${e.mode === 'physical'
+              ? `<input class="num" type="number" id="res-${e.id}" value="${e.result ?? ''}" placeholder="Roll" data-change="result" data-id="${e.id}" style="text-align:center">`
+              : `<span class="rollnum" style="${e.die === 20 && e.result === 20 ? 'color:#b8860b' : e.die === 20 && e.result === 1 ? 'color:var(--danger)' : ''}">${e.result}</span>`}
+          </div>
+          ${e.action ? `<div class="quote">“${esc(e.action)}”</div>` : ''}
+          <textarea id="rule-${e.id}" rows="2" placeholder="What happens?"></textarea>
+          <div class="row">
+            <button class="small soft" data-act="quick" data-id="${e.id}" data-text="Success">Success</button>
+            <button class="small soft" data-act="quick" data-id="${e.id}" data-text="Fail">Fail</button>
+            <label class="row faint" style="gap:5px;font-size:13px"><input type="checkbox" id="sec-${e.id}"> Secret</label>
+            <span class="grow"></span>
+            <button class="small" data-act="dismiss" data-id="${e.id}">Skip</button>
+            <button class="small primary" data-act="rule" data-id="${e.id}">Send</button>
+          </div>
+        </div>`).join('');
+      return `${pending.length ? head('Waiting on you') + cards : ''}
+        <button class="add" data-act="toggle" data-panel="dmroll">${open.has('dmroll') ? '− DM roll' : '+ DM roll'}</button>
+        <div class="unit" id="dmroll" ${hiddenUnless('dmroll')}>
+          <div class="row">
+            <select id="dmDie">${dieOptions(20, false)}</select>
+            <select id="dmMode">${modeOptions('digital')}</select>
+            <input id="dmResult" class="num" type="number" placeholder="Result">
+          </div>
+          <input id="dmLabel" placeholder="What for? e.g. goblin attacks Vex">
+          <div class="row"><label class="row faint" style="gap:5px;font-size:13px"><input type="checkbox" id="dmSecret" checked> Keep off the TV</label>
+            <span class="grow"></span><button class="small primary" data-act="dmroll">Roll</button></div>
+        </div>`;
+    },
+  },
+
+  party: {
+    sig: () => [S.players, S.online, open.has('alldice'), S.players.map((p) => open.has(`p-${p.id}`))],
+    html: () => {
+      const tools = S.players.length ? `<button class="small" data-act="toggle" data-panel="alldice">Everyone's dice</button>` : '';
+      return head('Party', tools) + `
+        <div class="unit" id="alldice" ${hiddenUnless('alldice')}>
+          <div class="row">
+            <select id="allDie" class="grow">${dieOptions(20, false)}</select>
+            <select id="allMode" class="grow">${modeOptions('digital')}</select>
+            <button class="small soft" data-act="allapply">Apply to all</button>
+          </div>
+        </div>
+        ${S.players.map(playerCard).join('') || '<div class="empty">No players yet. They join from their phones with the room code.</div>'}`;
+    },
+  },
+
+  enemies: {
+    sig: () => [S.enemies.filter((e) => e.mapId === S.currentMapId), S.currentMapId, [...open].filter((k) => k.startsWith('e-') || k === 'addenemy')],
+    html: () => {
+      const list = S.enemies.filter((e) => e.mapId === S.currentMapId);
+      return head('Enemies on this map', `<button class="small" data-act="toggle" data-panel="addenemy">${open.has('addenemy') ? 'Close' : '+ Add'}</button>`) + `
+        <div class="unit" id="addenemy" ${hiddenUnless('addenemy')}>
+          <div class="row">
+            <input id="enName" class="grow" placeholder="Name, e.g. Goblin">
+            <input id="enLabel" style="width:58px" placeholder="G1" maxlength="3">
+            <input id="enHp" class="num" type="number" placeholder="HP">
+            <input id="enColor" type="color" value="${ENEMY_COLOR}" title="Colour" style="width:40px;height:34px;padding:3px">
+          </div>
+          <div class="row"><label class="row faint" style="gap:5px;font-size:13px"><input type="checkbox" id="enHidden"> Start hidden</label>
+            <span class="grow"></span><button class="small primary" data-act="addenemy">Add enemy</button></div>
+        </div>
+        ${list.map(enemyCard).join('') || '<div class="empty">None here.</div>'}`;
+    },
+  },
+
+  maps: {
+    sig: () => [S.maps, S.currentMapId, [...open].filter((k) => k.startsWith('m-') || k === 'upload' || k === 'blank')],
+    html: () => {
+      return head('Maps', `
+          <button class="small" data-act="toggle" data-panel="blank">${open.has('blank') ? 'Close' : '+ Blank'}</button>
+          <button class="small" data-act="toggle" data-panel="upload">${open.has('upload') ? 'Close' : '+ Upload'}</button>`) + `
+        <div class="unit" id="blank" ${hiddenUnless('blank')}>
+          <div class="faint" style="font-size:13px">No image: a coloured area with a grid. Draw walls and shapes on it from the map toolbar.</div>
+          <input id="blankName" placeholder="Name, e.g. Goblin cave">
+          <div class="row">
+            <input id="blankW" type="number" min="5" value="60" style="width:80px" aria-label="Width">
+            <span class="faint">×</span>
+            <input id="blankH" type="number" min="5" value="40" style="width:80px" aria-label="Height">
+            <select id="blankUnit">${unitOptions('ft')}</select>
+            <input id="blankBg" type="color" value="#ffffff" title="Background colour" style="width:44px;height:34px;padding:3px">
+          </div>
+          <div class="row"><span class="grow"></span><button class="small primary" data-act="blankmap">Create map</button></div>
+        </div>
+        <div class="unit" id="upload" ${hiddenUnless('upload')}>
+          <input id="mapName" placeholder="Name, e.g. Swamp">
+          <div class="row"><input id="mapWidth" type="number" min="1" class="grow" placeholder="How wide is it? e.g. 200">
+            <select id="mapUnit">${unitOptions('ft')}</select></div>
+          <input id="mapFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" style="background:none;padding:0">
+          <div class="row"><span class="grow"></span><button class="small primary" data-act="upload">Upload map</button></div>
+        </div>
+        ${S.maps.map((m) => {
+          const pid = `m-${m.id}`;
+          const current = m.id === S.currentMapId;
+          const grid = m.grid || {};
+          const blank = m.kind === 'blank';
+          const size = blank ? `${m.realWidth} × ${m.realHeight} ${unitName(m.unit)}` : m.realWidth ? `${m.realWidth} ${unitName(m.unit)} across` : '';
+          return `<div class="unit" style="${current ? 'border-color:#222;box-shadow:var(--shadow)' : ''}">
+            <div class="unit-top">
+              ${blank ? `<span class="mapthumb" style="background:${m.bg};border:1.5px solid var(--border-soft)"></span>`
+                : `<img class="mapthumb" src="/uploads/${m.file}" alt="">`}
+              <div class="grow"><div class="unit-name" style="margin:0">${esc(m.name)}</div>
+                <div style="font-size:12px">${current ? '<span style="color:var(--accent)">Showing on TV</span>' : ''}
+                  ${current && size ? ' · ' : ''}${size ? `<span class="faint">${size}</span>` : ''}</div></div>
+              <button class="small ${grid.show ? 'soft' : ''}" data-act="grid" data-id="${m.id}" title="Grid on top of the map">${grid.show ? 'Grid on' : 'Grid'}</button>
+              ${current ? '' : `<button class="small primary" data-act="showmap" data-id="${m.id}">Show</button>`}
+              ${moreBtn(pid)}
+            </div>
+            <div class="more" id="${pid}" ${hiddenUnless(pid)}>
+              <label class="field"><span class="label">Grid lines</span>
+                <select data-change="gridcolor" data-id="${m.id}">
+                  <option value="dark" ${grid.color !== 'light' ? 'selected' : ''}>Dark (for light maps)</option>
+                  <option value="light" ${grid.color === 'light' ? 'selected' : ''}>Light (for dark maps)</option>
+                </select></label>
+              <label class="field"><span class="label">Snap tokens to grid</span>
+                <select data-change="gridsnap" data-id="${m.id}">
+                  <option value="on" ${grid.snap !== false ? 'selected' : ''}>On</option>
+                  <option value="off" ${grid.snap === false ? 'selected' : ''}>Off</option>
+                </select></label>
+              <label class="field"><span class="label">Square numbers</span>
+                <select data-change="gridnumbers" data-id="${m.id}">
+                  <option value="on" ${grid.numbers !== false ? 'selected' : ''}>On</option>
+                  <option value="off" ${grid.numbers === false ? 'selected' : ''}>Off</option>
+                </select></label>
+              <label class="field"><span class="label">Dark outside rooms</span>
+                <select data-change="fog" data-id="${m.id}">
+                  <option value="on" ${(m.lighting || {}).fog !== false ? 'selected' : ''}>On</option>
+                  <option value="off" ${(m.lighting || {}).fog === false ? 'selected' : ''}>Off</option>
+                </select></label>
+              <label class="field"><span class="label">Light at night (${unitName(m.unit)})</span>
+                <input type="number" min="1" value="${(m.lighting || {}).radius || 30}" data-change="lightradius" data-id="${m.id}"></label>
+              ${blank ? `
+              <label class="field"><span class="label">Width</span>
+                <input type="number" min="5" value="${m.realWidth}" data-change="realwidth" data-id="${m.id}"></label>
+              <label class="field"><span class="label">Height</span>
+                <input type="number" min="5" value="${m.realHeight}" data-change="realheight" data-id="${m.id}"></label>
+              <label class="field"><span class="label">Unit</span>
+                <select data-change="unit" data-id="${m.id}">${unitOptions(m.unit)}</select></label>
+              <label class="field"><span class="label">Background colour</span>
+                <input type="color" value="${m.bg}" data-change="mapbg" data-id="${m.id}"></label>` : `
+              <label class="field"><span class="label">Map width (real size)</span>
+                <input type="number" min="1" placeholder="e.g. 200" value="${m.realWidth || ''}" data-change="realwidth" data-id="${m.id}"></label>
+              <label class="field"><span class="label">Unit</span>
+                <select data-change="unit" data-id="${m.id}">${unitOptions(m.unit)}</select></label>`}
+              <div class="full faint" style="font-size:12px">${m.realWidth
+                ? `Tokens and grid squares are ${tokenSpan(m.unit)} ${unitName(m.unit)} across, true to scale.`
+                : 'Enter how wide the whole map is in real life to draw tokens and the grid to scale.'}</div>
+              ${(m.walls || []).length ? `<div class="full row"><span class="faint grow" style="font-size:12px">${m.walls.length} wall${m.walls.length === 1 ? '' : 's'}, ${(m.shapes || []).length} shape${(m.shapes || []).length === 1 ? '' : 's'}</span>
+                <button class="small danger" data-act="clearwalls" data-id="${m.id}">Clear all walls</button></div>` : ''}
+              <div class="full row"><button class="small soft" data-act="renamemap" data-id="${m.id}">Rename</button><span class="grow"></span>
+                <button class="small danger" data-act="deletemap" data-id="${m.id}">Delete map</button></div>
+            </div>
+          </div>`;
+        }).join('') || '<div class="empty">Make a blank map or upload an image to get started.</div>'}`;
+    },
+  },
+
+  scene: {
+    sig: () => [S.scene, S.showJoin],
+    html: () => head('Scene') + `
+      <div class="unit">
+        <textarea id="sceneText" rows="3" placeholder="A damp cave. Water drips somewhere ahead.">${esc(S.scene)}</textarea>
+        <div class="row"><span class="faint" style="font-size:12px">Shown on the TV and phones</span><span class="grow"></span>
+          <button class="small" data-act="clearscene">Clear</button><button class="small primary" data-act="setscene">Show</button></div>
+      </div>
+      <label class="row" style="gap:8px;font-size:14px;padding:4px 2px"><input type="checkbox" data-change="showjoin" ${S.showJoin ? 'checked' : ''}> Show the room code and QR on the TV</label>`,
+  },
+
+  npcs: {
+    sig: () => [
+      S.npcs.map((n) => ({ ...n, positions: !!(n.positions && n.positions[S.currentMapId]) })),
+      S.players.map((p) => [p.id, p.name]), S.currentMapId,
+      [...open].filter((k) => k.startsWith('n-') || k === 'npcform'),
+    ],
+    html: () => head('NPCs', `<button class="small" data-act="toggle" data-panel="npcform">${open.has('npcform') ? 'Close' : '+ New'}</button>`) + `
+      <div class="unit" id="npcform" ${hiddenUnless('npcform')}>
+        <h2 id="npcFormTitle">New NPC</h2>
+        <input type="hidden" id="npcId">
+        <div class="row"><input id="npcName" class="grow" placeholder="Name">
+          <input id="npcColor" type="color" value="${NPC_COLOR}" title="Colour" style="width:40px;height:34px;padding:3px"></div>
+        <input id="npcLoc" placeholder="Where they met, e.g. The Rusty Tankard">
+        <textarea id="npcDesc" rows="3" placeholder="What the players know about them"></textarea>
+        <div class="row"><button class="small" data-act="npcclear">Clear</button><span class="grow"></span><button class="small primary" data-act="npcsave">Save NPC</button></div>
+      </div>
+      ${S.npcs.map(npcCard).join('') || '<div class="empty">No NPCs yet. Add the people your party will meet.</div>'}`,
+  },
+
+  saves: {
+    sig: () => [S.campaignName],
+    html: () => head('Campaign') + `
+      <div class="unit">
+        <div class="row"><input id="campRename" class="grow" value="${esc(S.campaignName)}"><button class="small soft" data-act="rename">Rename</button></div>
+        <div class="faint" style="font-size:12px">Everything saves as you go. Switch or start campaigns from the Campaigns button at the top.</div>
+      </div>
+      <div class="row"><button class="small" data-act="newcode">New room code</button></div>`,
+  },
+
+  attrs: {
+    sig: () => [S.attributes, S.attributeMode],
+    html: () => head('Character attributes') + `
+      <div class="unit">
+        <div class="faint" style="font-size:13px">Every character in this campaign gets these. Homebrew is fine: call them anything.</div>
+        ${S.attributes.map((a) => `
+          <div class="row"><input class="grow" value="${esc(a.name)}" maxlength="30" data-change="attrname" data-id="${a.id}">
+            <button class="icon" data-act="attrdel" data-id="${a.id}" aria-label="Remove ${esc(a.name)}">×</button></div>`).join('')}
+        <div class="row"><input id="newAttr" class="grow" maxlength="30" placeholder="Add one, e.g. Strength" data-enter="attradd">
+          <button class="small soft" data-act="attradd">Add</button></div>
+        ${S.attributes.length ? '' : '<button class="add" data-act="attrclassic">+ Use the classic six (Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma)</button>'}
+      </div>
+      <div class="unit">
+        <span class="label">Who fills in the values?</span>
+        <label class="row" style="gap:8px;font-size:14px"><input type="radio" name="attrmode" value="players" data-change="attrmode" ${S.attributeMode !== 'dm' ? 'checked' : ''}>
+          Players fill in their own</label>
+        <label class="row" style="gap:8px;font-size:14px;align-items:flex-start"><input type="radio" name="attrmode" value="dm" data-change="attrmode" ${S.attributeMode === 'dm' ? 'checked' : ''} style="margin-top:3px">
+          <span>Only me<br><span class="faint" style="font-size:12px">Roll real dice at the table and type the results in, so nobody can cheat. Players see their values but can't change them.</span></span></label>
+        ${S.attributeMode === 'dm' && S.attributes.length ? '<div class="faint" style="font-size:12px">Fill in each character\'s values from ⋯ on their card in the Play tab.</div>' : ''}
+      </div>`,
+  },
+
+  log: {
+    sig: () => S.log.slice(-40),
+    html: () => {
+      const rows = S.log.slice(-40).reverse().map((e) => `
+        <div class="logline"><div class="row" style="gap:6px"><span class="dot" style="background:${e.color}"></span><b>${esc(e.who)}</b>
+          <span class="faint">d${e.die}</span><b>${e.result ?? '?'}</b>${e.secret ? '<span class="faint">· secret</span>' : ''}</div>
+          ${e.action ? `<div class="quote">${esc(e.action)}</div>` : ''}
+          ${e.ruling ? `<div>→ ${esc(e.ruling)}</div>` : ''}</div>`).join('');
+      return head('Roll history', S.log.length ? '<button class="small" data-act="clearlog">Clear</button>' : '') +
+        (rows ? `<div class="unit" style="gap:0;padding:4px 12px">${rows}</div>` : '<div class="empty">Nothing rolled yet.</div>');
+    },
+  },
+};
+
+// ---------- actions ----------
+
+const val = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+function patchFor(kind, id, patch) {
+  return send(kind === 'player' ? 'dm:player' : 'dm:enemy', { id, patch });
+}
+
+function addStatus(kind, id) {
+  const text = val(`st-${kind}-${id}`);
+  if (!text) return;
+  const list = kind === 'player' ? S.players : S.enemies;
+  const target = list.find((x) => x.id === id);
+  document.getElementById(`st-${kind}-${id}`).value = '';
+  document.activeElement.blur();
+  patchFor(kind, id, { statuses: [...target.statuses, text] });
+}
+
+function giveItem(id) {
+  const name = val(`item-${id}`);
+  if (!name) return;
+  document.getElementById(`item-${id}`).value = '';
+  document.activeElement.blur();
+  send('dm:player', { id, patch: { giveItem: { name, note: '' } } }).then((r) => r.ok && toast(`Gave ${name}`, true));
+}
+
+function addAttribute() {
+  const name = val('newAttr');
+  if (!name) return;
+  document.getElementById('newAttr').value = '';
+  send('dm:attributes', { add: name });
+}
+
+// Expand or collapse a "⋯" panel or form without waiting for the server.
+function setOpen(pid, on) {
+  if (on) open.add(pid); else open.delete(pid);
+  const el = document.getElementById(pid);
+  if (el) el.hidden = !on;
+  for (const name of Object.keys(sections)) renderSection(name);
+}
+
+async function uploadMap() {
+  const file = $('#mapFile').files[0];
+  if (!file) return toast('Choose an image first');
+  let blob = file;
+  let bitmap = await createImageBitmap(file);
+  let { width, height } = bitmap;
+  // Very large images get scaled down so they load quickly on the TV and phones.
+  const MAX = 4096;
+  if (width > MAX || height > MAX || file.size > 15e6) {
+    const k = Math.min(1, MAX / Math.max(width, height));
+    width = Math.round(width * k);
+    height = Math.round(height * k);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+    blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.88));
+  }
+  const name = val('mapName') || file.name.replace(/\.[^.]+$/, '');
+  const res = await send('dm:uploadMap', { name, type: blob.type, width, height, data: await blob.arrayBuffer() });
+  if (res.ok) {
+    const realWidth = val('mapWidth');
+    send('dm:map', { id: res.mapId, show: S.maps.length === 1, ...(realWidth ? { realWidth, unit: val('mapUnit') } : {}) });
+    $('#mapName').value = '';
+    $('#mapWidth').value = '';
+    setOpen('upload', false);
+  }
+}
+
+document.addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-act]');
+  if (!b) return;
+  const { act, id, kind } = b.dataset;
+  switch (act) {
+    case 'toggle': setOpen(b.dataset.panel, !open.has(b.dataset.panel)); break;
+    case 'quick': document.getElementById(`rule-${id}`).value = b.dataset.text; break;
+    case 'rule': {
+      const data = { id, ruling: val(`rule-${id}`), secret: document.getElementById(`sec-${id}`).checked };
+      const res = document.getElementById(`res-${id}`);
+      if (res) data.result = res.value;
+      send('dm:logEntry', data);
+      break;
+    }
+    case 'dismiss': send('dm:logEntry', { id, dismiss: true }); break;
+    case 'dmroll': {
+      const mode = val('dmMode');
+      if (mode === 'physical' && val('dmResult') === '') return toast('Type the number you rolled');
+      send('dm:roll', { die: val('dmDie'), mode, result: val('dmResult'), label: val('dmLabel'), secret: $('#dmSecret').checked });
+      $('#dmResult').value = '';
+      break;
+    }
+    case 'allapply': send('dm:allPlayers', { die: val('allDie'), rollMode: val('allMode') }); setOpen('alldice', false); break;
+    case 'dmg':
+    case 'heal': {
+      const amt = parseInt(val(`amt-${kind}-${id}`), 10);
+      if (!amt) return toast('Type an amount first');
+      document.getElementById(`amt-${kind}-${id}`).value = '';
+      patchFor(kind, id, { hpDelta: act === 'dmg' ? -Math.abs(amt) : Math.abs(amt) });
+      break;
+    }
+    case 'unstatus': {
+      const list = kind === 'player' ? S.players : S.enemies;
+      const t = list.find((x) => x.id === id);
+      patchFor(kind, id, { statuses: t.statuses.filter((_, i) => i !== Number(b.dataset.i)) });
+      break;
+    }
+    case 'give': giveItem(id); break;
+    case 'removeplayer':
+      if (confirm('Delete this character and their sheet for good? To keep them for another campaign, move them from the Campaigns screen instead.')) send('dm:removePlayer', { id });
+      break;
+    case 'addenemy': {
+      const res = await send('dm:addEnemy', { name: val('enName'), label: val('enLabel'), maxHp: val('enHp') || 10, hidden: $('#enHidden').checked, color: val('enColor') });
+      if (res.ok) ['enName', 'enLabel', 'enHp'].forEach((i) => { document.getElementById(i).value = ''; });
+      break;
+    }
+    case 'togglehide': {
+      const e = S.enemies.find((x) => x.id === id);
+      send('dm:enemy', { id, patch: { hidden: !e.hidden } });
+      break;
+    }
+    case 'removeenemy': send('dm:removeEnemy', { id }); break;
+    case 'upload': uploadMap(); break;
+    case 'showmap': send('dm:map', { id, show: true }); break;
+    case 'blankmap': {
+      const res = await send('dm:blankMap', {
+        name: val('blankName'), realWidth: val('blankW'), realHeight: val('blankH'), unit: val('blankUnit'), bg: val('blankBg'),
+      });
+      if (res.ok) {
+        $('#blankName').value = '';
+        setOpen('blank', false);
+        send('dm:map', { id: res.mapId, show: true });
+        toast('Blank map ready. Use the toolbar on the map to draw walls and shapes.', true);
+      }
+      break;
+    }
+    case 'clearwalls':
+      if (confirm('Remove every wall on this map?')) send('dm:wall', { clear: true });
+      break;
+    case 'grid': {
+      const m = S.maps.find((x) => x.id === id);
+      send('dm:map', { id, grid: { show: !(m.grid && m.grid.show) } });
+      break;
+    }
+    case 'renamemap': {
+      const name = prompt('Map name', S.maps.find((m) => m.id === id).name);
+      if (name) send('dm:map', { id, name });
+      break;
+    }
+    case 'deletemap':
+      if (confirm('Delete this map? Enemies on it are removed too.')) send('dm:deleteMap', { id });
+      break;
+    case 'setscene': send('dm:campaign', { scene: val('sceneText') }).then((r) => r.ok && toast('Scene shown', true)); break;
+    case 'clearscene': send('dm:campaign', { scene: '' }); break;
+    case 'newcode':
+      if (confirm('Make a new room code? New players will need it; joined players stay connected.')) send('dm:campaign', { newCode: true });
+      break;
+    case 'npcsave': {
+      const name = val('npcName');
+      if (!name) return toast('Give the NPC a name');
+      const npcId = val('npcId');
+      document.activeElement.blur();
+      const res = await send('dm:npc', { id: npcId || undefined, name, location: val('npcLoc'), description: val('npcDesc'), color: val('npcColor') });
+      if (res.ok) { clearNpcForm(); setOpen('npcform', false); }
+      break;
+    }
+    case 'npcclear': clearNpcForm(); break;
+    case 'npcenemy': {
+      const n = S.npcs.find((x) => x.id === id);
+      if (!S.map) return toast('Show a map first');
+      const hp = prompt(`${n.name} turns hostile! How much HP do they have?`, '10');
+      if (hp) send('dm:npcToEnemy', { id, maxHp: hp });
+      break;
+    }
+    case 'npcmap':
+      send('dm:npc', { id, name: S.npcs.find((n) => n.id === id).name, onMap: !!b.dataset.on });
+      break;
+    case 'npcedit': {
+      const n = S.npcs.find((x) => x.id === id);
+      setOpen('npcform', true);
+      $('#npcId').value = n.id;
+      $('#npcName').value = n.name;
+      $('#npcLoc').value = n.location;
+      $('#npcDesc').value = n.description;
+      $('#npcColor').value = n.color || NPC_COLOR;
+      $('#npcFormTitle').textContent = `Edit ${n.name}`;
+      $('#npcform').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('#npcName').focus();
+      break;
+    }
+    case 'npcdelete':
+      if (confirm('Delete this NPC? Players lose it from their list.')) send('dm:deleteNpc', { id });
+      break;
+    case 'attradd': addAttribute(); break;
+    case 'attrclassic': send('dm:attributes', { add: CLASSIC_ATTRIBUTES }); break;
+    case 'attrdel': {
+      const a = S.attributes.find((x) => x.id === id);
+      if (confirm(`Remove ${a.name}? Every character loses their ${a.name} value.`)) send('dm:attributes', { remove: id });
+      break;
+    }
+    case 'rename': {
+      const name = val('campRename');
+      if (name) send('dm:campaign', { name }).then((r) => r.ok && toast('Renamed', true));
+      break;
+    }
+    case 'dead': {
+      const p = S.players.find((x) => x.id === id);
+      if (!p.dead && !confirm(`Mark ${p.name} as dead? They leave the map and can't be picked when joining. You can bring them back later.`)) return;
+      send('dm:player', { id, patch: { dead: !p.dead } });
+      break;
+    }
+    case 'clearlog':
+      if (confirm('Clear the roll history?')) send('dm:clearLog');
+      break;
+  }
+});
+
+function clearNpcForm() {
+  ['npcId', 'npcName', 'npcLoc', 'npcDesc'].forEach((i) => { const el = document.getElementById(i); if (el) el.value = ''; });
+  const c = $('#npcColor');
+  if (c) c.value = NPC_COLOR;
+  const t = $('#npcFormTitle');
+  if (t) t.textContent = 'New NPC';
+}
+
+document.addEventListener('change', async (ev) => {
+  const el = ev.target.closest('[data-change]');
+  if (!el) return;
+  const { change, id, kind } = el.dataset;
+  switch (change) {
+    case 'result': send('dm:logEntry', { id, result: el.value }); break;
+    case 'pcolor': send('dm:player', { id, patch: { color: el.value } }); break;
+    case 'pattr': send('dm:player', { id, patch: { attributes: { [el.dataset.attr]: el.value } } }); break;
+    case 'attrname': send('dm:attributes', { rename: { id, name: el.value } }); break;
+    case 'attrmode': send('dm:attributes', { mode: el.value }); break;
+    case 'ecolor': send('dm:enemy', { id, patch: { color: el.value } }); break;
+    case 'ncolor': send('dm:npc', { id, name: S.npcs.find((n) => n.id === id).name, color: el.value }); break;
+    case 'maxhp': patchFor(kind, id, { maxHp: el.value }); break;
+    case 'die': {
+      let die = el.value;
+      if (die === 'custom') {
+        die = prompt('How many sides? (2 to 1000)', '7');
+        if (!die) { renderSection('party', true); return; }
+      }
+      send('dm:player', { id, patch: { die } });
+      break;
+    }
+    case 'mode': send('dm:player', { id, patch: { rollMode: el.value } }); break;
+    case 'realwidth': send('dm:map', { id, realWidth: el.value || 0 }); break;
+    case 'realheight': send('dm:map', { id, realHeight: el.value || 0 }); break;
+    case 'mapbg': send('dm:map', { id, bg: el.value }); break;
+    case 'unit': send('dm:map', { id, unit: el.value }); break;
+    case 'gridcolor': send('dm:map', { id, grid: { color: el.value } }); break;
+    case 'gridsnap': send('dm:map', { id, grid: { snap: el.value === 'on' } }); break;
+    case 'gridnumbers': send('dm:map', { id, grid: { numbers: el.value === 'on' } }); break;
+    case 'fog': send('dm:map', { id, lighting: { fog: el.value === 'on' } }); break;
+    case 'lightradius': send('dm:map', { id, lighting: { radius: el.value } }); break;
+    case 'showjoin': send('dm:campaign', { showJoin: el.checked }); break;
+    case 'npcall': send('dm:npc', { id, name: S.npcs.find((n) => n.id === id).name, revealAll: el.checked }); break;
+    case 'npcrel':
+      send('dm:npc', { id, name: S.npcs.find((n) => n.id === id).name, relationship: { playerId: el.dataset.pid, level: el.value } });
+      break;
+    case 'npcwho': {
+      const n = S.npcs.find((x) => x.id === id);
+      const set = new Set(n.revealedTo);
+      if (el.checked) set.add(el.dataset.pid); else set.delete(el.dataset.pid);
+      send('dm:npc', { id, name: n.name, revealedTo: [...set] });
+      break;
+    }
+  }
+  // Checkboxes and selects keep focus after a change; let the section refresh.
+  if (el.matches('select, input[type=checkbox], input[type=radio], input[type=color], input[type=range]')) el.blur();
+});
+
+document.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter') return;
+  const el = ev.target.closest('[data-enter]');
+  if (!el) return;
+  ev.preventDefault();
+  if (el.dataset.enter === 'addstatus') addStatus(el.dataset.kind, el.dataset.id);
+  if (el.dataset.enter === 'give') giveItem(el.dataset.id);
+  if (el.dataset.enter === 'attradd') addAttribute();
+});
+</script>
+</body>
+</html>

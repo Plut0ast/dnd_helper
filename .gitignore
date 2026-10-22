@@ -1,0 +1,10 @@
+# Installed packages (recreated with `npm install`)
+node_modules/
+
+# Your games: DM PIN, campaigns, characters and uploaded map images
+data/
+
+# Editor and OS clutter
+.DS_Store
+Thumbs.db
+*.log
