@@ -104,6 +104,9 @@
   .charrow:last-child { border-bottom: 0; }
   .charrow .avatar { width: 28px; height: 28px; font-size: 12px; }
 
+  .outdated { position: fixed; left: 12px; bottom: 12px; max-width: 340px; z-index: 200; background: #fff4d6; color: #5c4400;
+    border: 1.5px solid #e0b84a; border-radius: 14px; box-shadow: var(--shadow); padding: 10px 14px; font-size: 13px; }
+
   .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: #fff; color: var(--danger); border: 1.5px solid currentColor; box-shadow: var(--shadow); padding: 9px 16px; border-radius: 12px; z-index: 100; font-size: 14px; font-weight: 600; }
   .toast.ok { color: var(--accent); }
 
@@ -123,6 +126,10 @@
     <button class="primary">Enter</button>
     <div id="loginErr" class="error"></div>
   </form>
+</div>
+
+<div id="outdated" class="outdated" hidden>
+  Tabletop has been updated. Restart it to use the new version: close the <b>start.bat</b> window, open it again, then refresh this page.
 </div>
 
 <!-- campaign picker: shown after the PIN, and from the Campaigns button -->
@@ -164,6 +171,21 @@
       <button data-zoom="in" title="Zoom in (or use the mouse wheel)">+</button>
       <button data-zoom="fit" title="Fit the whole map to the screen (100%)">Fit</button>
       <label title="The TV zooms and pans with your map"><input type="checkbox" id="tvFollow"> TV follows</label>
+    </div>
+    <div id="wallPanel" class="shapepanel" hidden>
+      <div class="row"><b id="wpTitle" class="grow">Wall</b><span id="wpLength" class="faint" style="font-size:12px"></span></div>
+      <div class="seg" style="font-size:13px">
+        <button data-wtype="wall">Wall</button>
+        <button data-wtype="window">Window</button>
+      </div>
+      <div class="row">
+        <label id="wpColorRow" class="row faint" style="gap:6px;font-size:12px">Colour
+          <input id="wpColor" type="color" style="width:44px;height:34px;padding:3px"></label>
+        <label class="row faint" style="gap:6px;font-size:12px">Thickness
+          <select id="wpThick"><option value="thin">Thin</option><option value="normal">Normal</option><option value="thick">Thick</option></select></label>
+      </div>
+      <div class="row"><span class="faint grow" style="font-size:11px">Drag to move it, or drag an end to stretch it</span>
+        <button class="small danger" id="wpDelete">Delete</button></div>
     </div>
     <div id="shapePanel" class="shapepanel" hidden>
       <textarea id="shText" rows="2" maxlength="300" placeholder="Text inside (optional)"></textarea>
@@ -257,6 +279,20 @@ socket.on('connect', () => {
   const pin = sessionStorage.getItem('dmPin');
   if (pin) login(pin, false);
 });
+
+// If the server is running older code than these pages, say so: that mismatch is
+// what makes things silently not work after an update.
+async function checkOutdated() {
+  try {
+    const r = await fetch('/api/outdated', { cache: 'no-store' });
+    // A server too old to have this check (404) needs restarting too.
+    $('#outdated').hidden = r.status !== 404 && !(r.ok && (await r.json()).outdated);
+  } catch {
+    // Server unreachable: the connection itself will show that; don't guess.
+  }
+}
+checkOutdated();
+setInterval(checkOutdated, 30000);
 
 // ---------- campaign picker ----------
 
@@ -434,7 +470,10 @@ function setTool(t) {
   const m = $('#map');
   m.classList.remove('tool-move', 'tool-draw', 'tool-erase');
   m.classList.add(t === 'move' ? 'tool-move' : t === 'erase' ? 'tool-erase' : 'tool-draw');
-  if (t !== 'move') selectShape(null);
+  if (t !== 'move') {
+    selectShape(null);
+    selectWall(null);
+  }
 }
 $('#tools').addEventListener('click', (e) => {
   const b = e.target.closest('[data-tool]');
@@ -478,8 +517,54 @@ $('#dayNight').addEventListener('click', () => {
 function selectShape(id) {
   selected = id;
   mapView.selectShape(id);
+  if (id && selectedWall) selectWall(null); // one thing selected at a time
   refreshShapePanel(true);
 }
+
+// ----- the selected wall: type, colour, thickness -----
+
+let selectedWall = null;
+const currentWalls = () => (S && S.map && S.map.walls) || [];
+
+function selectWall(id) {
+  selectedWall = id;
+  mapView.selectWall(id);
+  if (id && selected) selectShape(null);
+  refreshWallPanel();
+}
+
+function refreshWallPanel() {
+  const w = currentWalls().find((x) => x.id === selectedWall);
+  $('#wallPanel').hidden = !w;
+  if (!w) { selectedWall = null; return; }
+  const type = w.type === 'window' ? 'window' : 'wall';
+  $('#wpTitle').textContent = type === 'window' ? 'Window' : 'Wall';
+  document.querySelectorAll('[data-wtype]').forEach((b) => b.classList.toggle('on', b.dataset.wtype === type));
+  $('#wpColorRow').hidden = type === 'window'; // windows always look like glass
+  if (document.activeElement !== $('#wpColor')) $('#wpColor').value = w.color || '#2b2622';
+  $('#wpThick').value = w.thickness || 'normal';
+  // Length in feet or metres, when the map's real size is known.
+  const m = S.map;
+  if (m.realWidth) {
+    const realHeight = m.realHeight || (m.realWidth * m.height) / m.width;
+    const len = Math.hypot((w.x2 - w.x1) * m.realWidth, (w.y2 - w.y1) * realHeight);
+    $('#wpLength').textContent = `${Math.round(len * 10) / 10} ${unitName(m.unit)} long`;
+  } else {
+    $('#wpLength').textContent = '';
+  }
+}
+
+const updateWall = (patch) => selectedWall && send('dm:wall', { update: { id: selectedWall, ...patch } });
+$('#wallPanel').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-wtype]');
+  if (b) updateWall({ type: b.dataset.wtype });
+});
+$('#wpColor').addEventListener('change', () => updateWall({ color: $('#wpColor').value }));
+$('#wpThick').addEventListener('change', () => updateWall({ thickness: $('#wpThick').value }));
+$('#wpDelete').addEventListener('click', () => {
+  if (selectedWall) send('dm:wall', { remove: selectedWall });
+  selectWall(null);
+});
 
 // Show the selected shape's text, colour and size (in grid squares).
 function refreshShapePanel(force) {
@@ -531,6 +616,10 @@ document.addEventListener('keydown', (e) => {
   if ((e.key === 'Delete' || e.key === 'Backspace') && selected) {
     send('dm:shape', { remove: selected });
     selectShape(null);
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedWall) {
+    send('dm:wall', { remove: selectedWall });
+    selectWall(null);
   }
 });
 
@@ -598,9 +687,10 @@ function dragWall(e, g) {
     const zeroLength = next.x1 === next.x2 && next.y1 === next.y2;
     if (changed && !zeroLength) {
       Object.assign(w, next); // show it straight away; the server confirms
-      send('dm:wall', { update: next });
+      send('dm:wall', { update: { id: w.id, x1: next.x1, y1: next.y1, x2: next.x2, y2: next.y2 } });
     }
     mapView.lockDrawings(false);
+    selectWall(w.id); // clicked or dragged: show its settings
   };
   stageEl.addEventListener('pointermove', move);
   stageEl.addEventListener('pointerup', up);
@@ -642,7 +732,10 @@ function startPan(e) {
     stageEl.removeEventListener('pointerup', up);
     stageEl.removeEventListener('pointercancel', up);
     $('#map').classList.remove('panning');
-    if (!moved) selectShape(null);
+    if (!moved) {
+      selectShape(null);
+      selectWall(null);
+    }
   };
   stageEl.addEventListener('pointermove', move);
   stageEl.addEventListener('pointerup', up);
@@ -794,6 +887,7 @@ socket.on('state', (v) => {
   S = v;
   mapView.render(mapShape());
   refreshShapePanel();
+  refreshWallPanel();
   refreshHistoryButtons();
   onMapChanged();
   $('#campName').textContent = S.campaignName;

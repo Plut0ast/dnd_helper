@@ -52,6 +52,8 @@ const RELATIONSHIPS = ['Hostile', 'Unfriendly', 'Neutral', 'Friendly', 'Allied']
 // Default token fills; the DM can recolour each one.
 const ENEMY_COLOR = '#55575d';
 const NPC_COLOR = '#e8e2d0';
+const WALL_COLOR = '#2b2622';
+const THICKNESS = ['thin', 'normal', 'thick'];
 
 // "Old Marta" -> "OM", "Grog" -> "GR"
 function initials(name) {
@@ -92,7 +94,7 @@ function newState(name = 'New campaign') {
     maps: [],          // { id, name, file, width, height, tokenScale, realWidth, unit: 'ft' | 'm',
                        //   grid: { show, color: 'dark' | 'light', snap, numbers },
                        //   kind: 'image' | 'blank', bg (blank maps: colour), realHeight (blank maps),
-                       //   walls: [{ id, type: 'wall' | 'window', x1, y1, x2, y2 }],
+                       //   walls: [{ id, type: 'wall' | 'window', x1, y1, x2, y2, color, thickness }],
                        //   shapes: [{ id, type, x, y, w, h, color, text }],
                        //   lighting: { time: 'day' | 'night', radius (night sight, in the map's unit), fog } }
                        //   (positions and sizes are fractions of the map)
@@ -423,6 +425,16 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { maxHttpBufferSize: 30e6 });
 
+// Has server.js been edited since this server started? Then it's running old code and
+// the DM screen asks for a restart (pages always load the newest files; the server doesn't).
+const SERVER_FILE = path.join(__dirname, 'server.js');
+const startedWith = fs.statSync(SERVER_FILE).mtimeMs;
+app.get('/api/outdated', (req, res) => {
+  let outdated = false;
+  try { outdated = fs.statSync(SERVER_FILE).mtimeMs > startedWith; } catch {}
+  res.json({ outdated });
+});
+
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '1h' }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
 
@@ -684,6 +696,7 @@ io.on('connection', (socket) => {
       const w = {
         id: id(), type: d.add.type === 'window' ? 'window' : 'wall',
         x1: frac(d.add.x1), y1: frac(d.add.y1), x2: frac(d.add.x2), y2: frac(d.add.y2),
+        color: WALL_COLOR, thickness: 'normal',
       };
       if (w.x1 === w.x2 && w.y1 === w.y2) throw new Error('Drag to draw a wall');
       if (map.walls.length >= 2000) throw new Error('This map has too many walls');
@@ -694,6 +707,8 @@ io.on('connection', (socket) => {
       if (!w) throw new Error('Wall not found');
       for (const k of ['x1', 'y1', 'x2', 'y2']) if (d.update[k] !== undefined) w[k] = frac(d.update[k]);
       if (d.update.type !== undefined) w.type = d.update.type === 'window' ? 'window' : 'wall';
+      if (d.update.color !== undefined) w.color = color(d.update.color, w.color || WALL_COLOR);
+      if (d.update.thickness !== undefined) w.thickness = THICKNESS.includes(d.update.thickness) ? d.update.thickness : 'normal';
     }
     if (d.remove) map.walls = map.walls.filter((w) => w.id !== d.remove);
     if (d.clear) map.walls = [];

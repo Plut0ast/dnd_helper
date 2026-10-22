@@ -10,6 +10,9 @@ const DICE = [4, 6, 8, 10, 12, 20, 100];
 const ENEMY_COLOR = '#55575d';
 const NPC_COLOR = '#e8e2d0';
 
+// How much thicker or thinner than normal a wall is drawn.
+const WALL_THICKNESS = { thin: 0.5, normal: 1, thick: 1.7 };
+
 // One creature's space: a 5 ft square, or 1.5 m in metric.
 const tokenSpan = (unit) => (unit === 'm' ? 1.5 : 5);
 
@@ -67,6 +70,7 @@ function createMapView(container, opts = {}) {
   let dragging = null;
   let drawingsLocked = false; // the DM is dragging a shape: don't redraw under them
   let selectedShape = null;
+  let selectedWall = null;
   // Camera: zoom 1 fits the whole map; below 1 it's smaller with space around it, above 1
   // it's zoomed in. (cx, cy) is the map point in the middle of the view.
   const WHOLE_MAP = { zoom: 1, cx: 0.5, cy: 0.5 };
@@ -267,7 +271,10 @@ function createMapView(container, opts = {}) {
     const k = (v) => (v * 1000).toFixed(1);
     wallsSvg.innerHTML = (map.walls || []).map((w) => {
       const pts = `x1="${k(w.x1)}" y1="${k(w.y1)}" x2="${k(w.x2)}" y2="${k(w.y2)}"`;
-      return `<g data-wall="${w.id}" class="${w.type === 'window' ? 'window' : ''}"><line class="wall-hit" ${pts}/><line class="wall-edge" ${pts}/><line class="wall" ${pts}/></g>`;
+      const thick = WALL_THICKNESS[w.thickness] || 1;
+      const style = `--wt:${thick};${w.type !== 'window' && w.color ? `--wc:${w.color}` : ''}`;
+      const cls = `${w.type === 'window' ? 'window' : ''} ${w.id === selectedWall ? 'selected' : ''}`;
+      return `<g data-wall="${w.id}" class="${cls}" style="${style}"><line class="wall-hit" ${pts}/><line class="wall-edge" ${pts}/><line class="wall" ${pts}/></g>`;
     }).join('');
     shapesEl.innerHTML = (map.shapes || []).map((s) => {
       const fill = s.type === 'text' ? `color:${s.color}` : `background:${s.color};color:${textOn(s.color)}`;
@@ -393,6 +400,11 @@ function createMapView(container, opts = {}) {
     shapesEl.querySelectorAll('.shape').forEach((el) => el.classList.toggle('selected', el.dataset.shape === sid));
   }
 
+  function selectWall(wid) {
+    selectedWall = wid;
+    wallsSvg.querySelectorAll('g[data-wall]').forEach((g) => g.classList.toggle('selected', g.dataset.wall === wid));
+  }
+
   // One grid square as a fraction of the map's width and height.
   function cellFrac() {
     if (!cellPx || !stage.clientWidth) return null;
@@ -425,7 +437,7 @@ function createMapView(container, opts = {}) {
   }
 
   return {
-    render, moveToken, stage, toFrac, snapCorner, selectShape, cellFrac,
+    render, moveToken, stage, toFrac, snapCorner, selectShape, selectWall, cellFrac,
     zoomAt, panBy, setCamera, camera: () => ({ ...cam }),
     lockDrawings(on) { drawingsLocked = on; if (!on && view && view.map) renderDrawings(view.map); },
   };
